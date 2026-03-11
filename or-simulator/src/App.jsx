@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ScatterChart, Scatter, ReferenceLine, CartesianGrid, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ScatterChart, Scatter, ReferenceLine, CartesianGrid, AreaChart, Area } from "recharts";
 
 // ── constants ──────────────────────────────────────────────────────────────
 const START = 8 * 60;
@@ -37,6 +37,31 @@ function randLognorm(mu, sigma) {
   const u1 = Math.random(), u2 = Math.random();
   const z = Math.sqrt(-2 * Math.log(Math.max(u1, 1e-10))) * Math.cos(2 * Math.PI * u2);
   return Math.exp(mu + sigma * z);
+}
+
+// ── log-normal PDF for chart ───────────────────────────────────────────────
+function lognormPDF(x, mu, sigma) {
+  if (x <= 0) return 0;
+  const lx = Math.log(x);
+  return (1 / (x * sigma * Math.sqrt(2 * Math.PI))) *
+    Math.exp(-((lx - mu) ** 2) / (2 * sigma ** 2));
+}
+
+function buildPDFCurve(mu, sigma, points = 80) {
+  const median = Math.exp(mu);
+  const xMin = Math.max(5, Math.round(median * 0.3));
+  const xMax = Math.round(median * 2.8);
+  const step = (xMax - xMin) / points;
+  const data = [];
+  let maxY = 0;
+  for (let i = 0; i <= points; i++) {
+    const x = xMin + i * step;
+    const y = lognormPDF(x, mu, sigma);
+    if (y > maxY) maxY = y;
+    data.push({ x: Math.round(x), y });
+  }
+  // normalize to 0-100 for readability
+  return { curve: data.map(d => ({ ...d, y: maxY > 0 ? (d.y / maxY) * 100 : 0 })), median, xMin, xMax };
 }
 
 function generateHistory(procParams, n = SIM_HISTORY) {
@@ -444,6 +469,16 @@ export default function ORSimV2() {
             const color = PROC_COLORS[proc];
             const previewMedian = Math.round(Math.exp(mu));
             const previewP80 = Math.round(Math.exp(mu + 0.842 * sigma));
+            const { curve, median, xMin, xMax } = buildPDFCurve(mu, sigma);
+            const medianPoint = curve.reduce((best, d) => Math.abs(d.x - median) < Math.abs(best.x - median) ? d : best, curve[0]);
+
+            // custom dot for median on chart
+            const CustomDot = (props) => {
+              const { cx, cy, payload } = props;
+              if (Math.abs(payload.x - Math.round(median)) > (xMax - xMin) / curve.length * 1.5) return null;
+              return <circle cx={cx} cy={cy} r={4} fill={color} stroke="#0a0a0f" strokeWidth={2} />;
+            };
+
             return (
               <div key={proc} className="card" style={{ borderTop:`2px solid ${color}` }}>
                 <div style={{ fontSize:13, fontWeight:600, color, marginBottom:4 }}>{proc}</div>
@@ -454,7 +489,45 @@ export default function ORSimV2() {
                   onChange={v => setParam(proc, "mu", v)} color={color} />
                 <Slider label="σ (log-scale std)" value={sigma} min={0.10} max={0.60} step={0.01}
                   onChange={v => setParam(proc, "sigma", v)} color={color} />
-                <div style={{ marginTop:12, background:"#0d0d14", borderRadius:6, padding:"10px 12px" }}>
+
+                {/* PDF curve chart */}
+                <div style={{ marginTop:14, marginBottom:4 }}>
+                  <div style={{ fontSize:10, color:"#333", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, fontFamily:"'JetBrains Mono',monospace" }}>
+                    Rozkład czasu operacji
+                  </div>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <AreaChart data={curve} margin={{ top:6, right:4, bottom:0, left:-28 }}>
+                      <defs>
+                        <linearGradient id={`grad-${proc.replace(/\s/g,"")}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={color} stopOpacity={0.35} />
+                          <stop offset="95%" stopColor={color} stopOpacity={0.03} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a26" vertical={false} />
+                      <XAxis dataKey="x" tick={{ fontSize:9, fill:"#555", fontFamily:"JetBrains Mono" }}
+                        tickFormatter={v => `${v}'`} interval="preserveStartEnd" />
+                      <YAxis hide />
+                      {/* median reference line */}
+                      <ReferenceLine x={Math.round(median)} stroke={color} strokeWidth={1.5}
+                        strokeDasharray="4 2"
+                        label={{ value:`μ=${Math.round(median)}'`, position:"top", fill:color, fontSize:9, fontFamily:"JetBrains Mono" }} />
+                      {/* P80 reference line */}
+                      <ReferenceLine x={previewP80} stroke="#555" strokeWidth={1}
+                        strokeDasharray="2 3"
+                        label={{ value:`P80=${previewP80}'`, position:"top", fill:"#555", fontSize:9, fontFamily:"JetBrains Mono" }} />
+                      <Tooltip
+                        contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }}
+                        formatter={(v, n, p) => [`${p.payload.x} min`, "czas"]}
+                        labelFormatter={() => ""}
+                      />
+                      <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2}
+                        fill={`url(#grad-${proc.replace(/\s/g,"")})`}
+                        dot={false} activeDot={{ r:3, fill:color }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div style={{ marginTop:10, background:"#0d0d14", borderRadius:6, padding:"10px 12px" }}>
                   <div style={{ fontSize:10, color:"#333", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>
                     Macierz P50 per chirurg
                   </div>
@@ -480,6 +553,7 @@ export default function ORSimV2() {
               współczynnik chirurga (A: 0.92 · B: 1.10 · C: 1.00).
               Plan = P50 zaokrąglony do 5 min z {SIM_HISTORY} symulowanych operacji historycznych.
               Zwiększenie σ → większy ogon rozkładu → więcej niespodziewanych przekroczeń.
+              Pomarańczowa linia przerywana = mediana (μ), szara = P80.
             </div>
           </div>
         </div>
