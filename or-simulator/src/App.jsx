@@ -188,6 +188,7 @@ export default function ORSimV3() {
   const [customOffsets, setCustomOffsets] = useState({ Appendectomy:0, Cholecystectomy:0, "Hernia repair":0 });
   const [runs, setRuns] = useState(0);
   const [activeTab, setActiveTab] = useState("gantt");
+  const [showHelp, setShowHelp] = useState(false);
 
   const matrix = useMemo(() => generateHistory(procParams), [procParams, runs]);
 
@@ -285,11 +286,78 @@ export default function ORSimV3() {
             {" "}· run #{runs}
           </div>
         </div>
-        <button onClick={runSim} style={{
-          background:"linear-gradient(135deg,#e07b39,#c45e1a)", color:"#fff",
-          border:"none", borderRadius:8, padding:"10px 24px", fontSize:13,
-          fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif",
-        }}>▶ Uruchom</button>
+        <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+          <button onClick={() => setShowHelp(true)} style={{
+            background:"transparent", color:"#555", border:"1px solid #252530",
+            borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700,
+            cursor:"pointer", fontFamily:"'Syne',sans-serif",
+          }}>? Instrukcja</button>
+          <button onClick={runSim} style={{
+            background:"linear-gradient(135deg,#e07b39,#c45e1a)", color:"#fff",
+            border:"none", borderRadius:8, padding:"10px 24px", fontSize:13,
+            fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif",
+          }}>▶ Uruchom</button>
+        </div>
+
+      {/* ── HELP MODAL ── */}
+      {showHelp && (
+        <div onClick={() => setShowHelp(false)} style={{
+          position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000,
+          display:"flex", alignItems:"center", justifyContent:"center", padding:24,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background:"#111118", border:"1px solid #1e1e2a", borderRadius:12,
+            padding:"28px 32px", maxWidth:580, width:"100%", maxHeight:"80vh",
+            overflowY:"auto", position:"relative",
+          }}>
+            <button onClick={() => setShowHelp(false)} style={{
+              position:"absolute", top:16, right:16, background:"transparent",
+              border:"none", color:"#555", fontSize:20, cursor:"pointer", lineHeight:1,
+            }}>✕</button>
+            <div style={{ fontSize:10, letterSpacing:"0.15em", color:"#444", textTransform:"uppercase",
+              fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>Instrukcja obsługi</div>
+            <h2 style={{ margin:"0 0 20px", fontSize:18, color:"#f0ede8" }}>Symulator Sali Operacyjnej</h2>
+
+            {[
+              {
+                n:"1", title:"Rozkłady czasów realizacji",
+                body:"Ustaw parametry rozkładu log-normalnego per procedura. Suwak μ (mu) przesuwa krzywą — zmienia typowy czas operacji. Suwak σ (sigma) zmienia szerokość krzywej — im większy, tym więcej niespodzianek. Na wykresie widoczne są trzy linie: czerwona = średnia (zawyżona), pomarańczowa = P50 (typowy), zielona = P80 (bezpieczny).",
+              },
+              {
+                n:"2", title:"Parametry planowania",
+                body:"Wybierz tryb wyznaczania planu: Średnia — błędne podejście, zawyżona przez długie operacje. P50 (mediana) — typowy czas, połowa operacji przekroczy plan. P80 — bezpieczniejszy, tylko 20% operacji przekroczy plan. Własny — ręczna korekta per procedura suwakiem offsetu.",
+              },
+              {
+                n:"3", title:"Uruchom symulację",
+                body:"Kliknij ▶ Uruchom — symulator wylosuje rzeczywiste czasy z rozkładu log-normalnego i porówna je z planem. Każde uruchomienie daje inny wynik.",
+              },
+              {
+                n:"4", title:"Gantt — odczytaj wyniki",
+                body:"Kolorowa ramka = plan (aktywny tryb). Pełny pasek = rzeczywistość. Czerwone obramowanie = przekroczenie planu o ponad 10 minut. Tabela pokazuje plan, start/koniec planu, czas rzeczywisty i Δ (różnicę).",
+              },
+              {
+                n:"5", title:"KPI",
+                body:"Suma opóźnień — łączna różnica plan vs rzeczywistość. Skumul. przekroczenia — suma tylko operacji dłuższych niż plan. Efektywność sali — operacje + przygotowania / dostępny czas. Utilization — tylko czas operacji / dostępny czas. Koniec ostatniej op. — czerwony = nadgodziny.",
+              },
+            ].map(({ n, title, body }) => (
+              <div key={n} style={{ marginBottom:18 }}>
+                <div style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:6 }}>
+                  <span style={{ background:"#e07b39", color:"#fff", borderRadius:"50%", width:20, height:20,
+                    display:"inline-flex", alignItems:"center", justifyContent:"center",
+                    fontSize:11, fontWeight:700, flexShrink:0 }}>{n}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:"#e0d8cc" }}>{title}</span>
+                </div>
+                <div style={{ fontSize:12, color:"#666", lineHeight:1.7, paddingLeft:30 }}>{body}</div>
+              </div>
+            ))}
+
+            <div style={{ borderTop:"1px solid #1e1e2a", paddingTop:14, marginTop:4,
+              fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", textAlign:"center" }}>
+              Kliknij gdziekolwiek poza oknem aby zamknąć
+            </div>
+          </div>
+        </div>
+      )}
       </div>
 
       {/* KPIs */}
@@ -316,8 +384,8 @@ export default function ORSimV3() {
           ["gantt","Gantt"],
           ["planning","Parametry planowania"],
           ["bias","Błąd planowania"],
-          ["matrix","Macierz P50/P80"],
-          ["params","Rozkłady"],
+          ["matrix","Macierz P50/P80 (Monte Carlo)"],
+          ["params","Rozkłady czasów realizacji"],
         ].map(([k,lbl]) => (
           <button key={k} className={`tab ${activeTab===k?"tab-active":"tab-inactive"}`}
             onClick={()=>setActiveTab(k)}>{lbl}</button>
