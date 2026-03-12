@@ -4,22 +4,184 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 
 const START = 8 * 60, END = 16 * 60, PREP = 15, SIM_HISTORY = 200;
 const SURGEON_COLORS = { A: "#e07b39", B: "#4a9eff", C: "#a78bfa" };
-const PROC_COLORS = { Appendectomy: "#e07b39", Cholecystectomy: "#4a9eff", "Hernia repair": "#a78bfa" };
+const PROC_COLORS = { Appendektomia: "#e07b39", Cholecystektomia: "#4a9eff", "Naprawa przepukliny": "#a78bfa" };
 
 const DEFAULT_PROC_PARAMS = {
-  Appendectomy:    { mu: 4.06, sigma: 0.28 },
-  Cholecystectomy: { mu: 4.28, sigma: 0.32 },
-  "Hernia repair": { mu: 3.91, sigma: 0.26 },
+  Appendektomia:         { mu: 4.06, sigma: 0.28 },
+  Cholecystektomia:      { mu: 4.28, sigma: 0.32 },
+  "Naprawa przepukliny": { mu: 3.91, sigma: 0.26 },
 };
 const SURGEON_SKILL = { A: 0.92, B: 1.10, C: 1.00 };
 const DEFAULT_PLAN = [
-  { chir: "A", proc: "Appendectomy" },
-  { chir: "B", proc: "Cholecystectomy" },
-  { chir: "C", proc: "Appendectomy" },
-  { chir: "A", proc: "Hernia repair" },
-  { chir: "B", proc: "Appendectomy" },
-  { chir: "C", proc: "Cholecystectomy" },
+  { chir: "A", proc: "Appendektomia" },
+  { chir: "B", proc: "Cholecystektomia" },
+  { chir: "C", proc: "Appendektomia" },
+  { chir: "A", proc: "Naprawa przepukliny" },
+  { chir: "B", proc: "Appendektomia" },
+  { chir: "C", proc: "Cholecystektomia" },
 ];
+
+// ── i18n ──────────────────────────────────────────────────────────────────
+const PROC_NAMES_EN = {
+  Appendektomia: "Appendectomy",
+  Cholecystektomia: "Cholecystectomy",
+  "Naprawa przepukliny": "Hernia Repair",
+};
+
+const T = {
+  pl: {
+    subtitle: "OR · Symulator Sali — v3",
+    title: "Błąd planowania & rozkład log-normalny",
+    planMode: "Tryb planu",
+    run: "run",
+    help: "? Instrukcja",
+    runBtn: "▶ Uruchom",
+    kpi: {
+      sumDelay: "Suma opóźnień",
+      totalDelay: "Przekroczenia (suma)",
+      efficiency: "Efektywność sali",
+      efficiencyTip: "op. + przygotowania / czas dostępny",
+      utilization: "Wykorzystanie sali (op.)",
+      utilizationTip: "tylko czas operacji / czas dostępny",
+      lastEnd: "Koniec ostatniej op.",
+      overruns: "Op. z przekroczeniem",
+    },
+    tabs: {
+      gantt: "Gantt",
+      planning: "Parametry planowania",
+      bias: "Błąd planowania",
+      matrix: "Macierz P50/P80 (Monte Carlo)",
+      params: "Rozkłady czasów realizacji",
+    },
+    gantt: {
+      planLabel: "Plan —",
+      actual: "Rzeczywistość",
+      surgeon: "Chirurg",
+      tableHeaders: ["Op","Chir","Procedura","Plan","Start (plan)","Koniec (plan)","Rzecz.","Δ","Start","Koniec"],
+    },
+    planning: {
+      modeTitle: "Tryb wyznaczania planu operacji",
+      modes: {
+        mean:   { label: "Średnia",       desc: "zawyżona przez długie operacje" },
+        p50:    { label: "P50 (mediana)", desc: "50% operacji przekroczy plan" },
+        p80:    { label: "P80",           desc: "tylko 20% przekroczy plan" },
+        custom: { label: "Własny",        desc: "ręczna korekta per procedura" },
+      },
+      explainTitle: "Dlaczego planowanie ze średniej jest błędem?",
+      explainBody: "Rozkład log-normalny ma długi ogon po prawej — kilka bardzo długich operacji zawyża średnią znacznie powyżej mediany. Jeśli planujemy ze średniej,",
+      explainHighlight: " połowa operacji systematycznie przekracza plan",
+      explainSuffix: " — nie z winy chirurga, ale z powodu złego narzędzia statystycznego. P50 (mediana) jest odporna na wartości odstające. P80 daje bufor bezpieczeństwa.",
+      badges: { mean: "zawyżona", p50: "typowy", p80: "bezpieczny" },
+      offsetLabel: "Korekta planu (offset)",
+      offsetBase: "Baza P50",
+      diffTitle: "Porównanie planów — różnica średnia vs P50 per chirurg × procedura",
+      diffHeaders: ["Chirurg","Procedura","Średnia","P50","P80","Różnica śr.−P50","Aktywny plan"],
+    },
+    bias: {
+      bySurgeon: "Średni błąd planowania per chirurg (min)",
+      byProc: "Średni błąd planowania per procedura (min)",
+      scatter: "Plan vs Rzeczywistość — scatter",
+      idealPlan: "Idealny plan",
+      avgDelta: "Śr. Δ",
+    },
+    matrix: {
+      title: "Macierz Chirurg × Procedura",
+      headers: ["Chirurg","Procedura","Średnia","P50","P80","Aktywny plan"],
+    },
+    params: {
+      distLabel: "Rozkład — czerwona = średnia, pomarańcz. = P50",
+      surgeon: "Chirurg",
+    },
+    helpModal: {
+      label: "Instrukcja obsługi",
+      title: "Symulator Sali Operacyjnej",
+      close: "Kliknij gdziekolwiek poza oknem aby zamknąć",
+      steps: [
+        { title: "Rozkłady czasów realizacji", body: "Ustaw parametry rozkładu log-normalnego per procedura. Suwak μ (mu) przesuwa krzywą — zmienia typowy czas operacji. Suwak σ (sigma) zmienia szerokość krzywej — im większy, tym więcej niespodzianek. Na wykresie widoczne są trzy linie: czerwona = średnia (zawyżona), pomarańczowa = P50 (typowy), zielona = P80 (bezpieczny)." },
+        { title: "Parametry planowania", body: "Wybierz tryb wyznaczania planu: Średnia — błędne podejście, zawyżona przez długie operacje. P50 (mediana) — typowy czas, połowa operacji przekroczy plan. P80 — bezpieczniejszy, tylko 20% operacji przekroczy plan. Własny — ręczna korekta per procedura suwakiem offsetu." },
+        { title: "Uruchom symulację", body: "Kliknij ▶ Uruchom — symulator wylosuje rzeczywiste czasy z rozkładu log-normalnego i porówna je z planem. Każde uruchomienie daje inny wynik." },
+        { title: "Gantt — odczytaj wyniki", body: "Kolorowa ramka = plan (aktywny tryb). Pełny pasek = rzeczywistość. Czerwone obramowanie = przekroczenie planu o ponad 10 minut. Tabela pokazuje plan, start/koniec planu, czas rzeczywisty i Δ (różnicę)." },
+        { title: "KPI", body: "Suma opóźnień — łączna różnica plan vs rzeczywistość. Przekroczenia (suma) — suma tylko operacji dłuższych niż plan. Efektywność sali — operacje + przygotowania / dostępny czas. Wykorzystanie sali — tylko czas operacji / dostępny czas. Koniec ostatniej op. — czerwony = nadgodziny." },
+      ],
+    },
+  },
+  en: {
+    subtitle: "OR · Operating Room Simulator — v3",
+    title: "Planning Bias & Log-Normal Distribution",
+    planMode: "Plan mode",
+    run: "run",
+    help: "? Help",
+    runBtn: "▶ Run",
+    kpi: {
+      sumDelay: "Total delay",
+      totalDelay: "Overruns (sum)",
+      efficiency: "Room efficiency",
+      efficiencyTip: "ops + prep time / available time",
+      utilization: "Room utilization (ops)",
+      utilizationTip: "ops time only / available time",
+      lastEnd: "Last op. end",
+      overruns: "Ops with overrun",
+    },
+    tabs: {
+      gantt: "Gantt",
+      planning: "Planning parameters",
+      bias: "Planning bias",
+      matrix: "P50/P80 Matrix (Monte Carlo)",
+      params: "Procedure time distributions",
+    },
+    gantt: {
+      planLabel: "Plan —",
+      actual: "Actual",
+      surgeon: "Surgeon",
+      tableHeaders: ["Op","Surg","Procedure","Plan","Start (plan)","End (plan)","Actual","Δ","Start","End"],
+    },
+    planning: {
+      modeTitle: "Planning mode",
+      modes: {
+        mean:   { label: "Mean",          desc: "inflated by long outlier ops" },
+        p50:    { label: "P50 (median)",  desc: "50% of ops will exceed plan" },
+        p80:    { label: "P80",           desc: "only 20% will exceed plan" },
+        custom: { label: "Custom",        desc: "manual offset per procedure" },
+      },
+      explainTitle: "Why planning from the mean is a mistake?",
+      explainBody: "The log-normal distribution has a long right tail — a few very long operations inflate the mean well above the median. Planning from the mean means",
+      explainHighlight: " half of operations systematically exceed the plan",
+      explainSuffix: " — not due to surgeon error, but due to the wrong statistical tool. P50 (median) is robust to outliers. P80 provides a safety buffer.",
+      badges: { mean: "inflated", p50: "typical", p80: "safe" },
+      offsetLabel: "Plan offset (minutes)",
+      offsetBase: "P50 base",
+      diffTitle: "Plan comparison — mean vs P50 per surgeon × procedure",
+      diffHeaders: ["Surgeon","Procedure","Mean","P50","P80","Diff mean−P50","Active plan"],
+    },
+    bias: {
+      bySurgeon: "Average planning error per surgeon (min)",
+      byProc: "Average planning error per procedure (min)",
+      scatter: "Plan vs Actual — scatter",
+      idealPlan: "Perfect plan",
+      avgDelta: "Avg Δ",
+    },
+    matrix: {
+      title: "Surgeon × Procedure matrix",
+      headers: ["Surgeon","Procedure","Mean","P50","P80","Active plan"],
+    },
+    params: {
+      distLabel: "Distribution — red = mean, orange = P50",
+      surgeon: "Surgeon",
+    },
+    helpModal: {
+      label: "User guide",
+      title: "Operating Room Simulator",
+      close: "Click anywhere outside to close",
+      steps: [
+        { title: "Procedure time distributions", body: "Set log-normal distribution parameters per procedure. The μ (mu) slider shifts the curve — changes the typical operation time. The σ (sigma) slider changes the curve width — the larger it is, the more variability. Three reference lines are shown: red = mean (inflated), orange = P50 (typical), green = P80 (safe)." },
+        { title: "Planning parameters", body: "Choose the planning mode: Mean — incorrect approach, inflated by long operations. P50 (median) — typical time, half of operations will exceed the plan. P80 — safer, only 20% of operations will exceed the plan. Custom — manual offset per procedure." },
+        { title: "Run simulation", body: "Click ▶ Run — the simulator draws actual times from a log-normal distribution and compares them to the plan. Each run gives a different result." },
+        { title: "Gantt — read results", body: "Colored outline = plan (active mode). Solid bar = actual time. Red outline = plan exceeded by more than 10 minutes. The table shows plan, plan start/end, actual time and Δ (difference)." },
+        { title: "KPIs", body: "Total delay — sum of plan vs actual differences. Overruns (sum) — sum of only the operations longer than planned. Room efficiency — ops + prep time / available time. Room utilization — ops time only / available time. Last op. end — red = overtime." },
+      ],
+    },
+  },
+};
 
 // ── math ──────────────────────────────────────────────────────────────────
 function randLognorm(mu, sigma) {
@@ -69,14 +231,13 @@ function generateHistory(procParams, n = SIM_HISTORY) {
   return matrix;
 }
 
-// planMode: "mean" | "p50" | "p80" | "custom"
 function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   const cell = matrix[proc]?.[surg];
   if (!cell) return 60;
   let base;
   if (planMode === "mean") base = cell.mean;
   else if (planMode === "p80") base = cell.p80;
-  else base = cell.p50; // p50 or custom
+  else base = cell.p50;
   const offset = customOffsets?.[proc] ?? 0;
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
@@ -88,7 +249,7 @@ function simulate(plan, procParams, matrix, planMode, customOffsets) {
     const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
     const skill = SURGEON_SKILL[op.chir] ?? 1;
     const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
-    const planned    = getPlanned(matrix, op.proc, op.chir, planMode, customOffsets);
+    const planned     = getPlanned(matrix, op.proc, op.chir, planMode, customOffsets);
     const plannedMean = getPlanned(matrix, op.proc, op.chir, "mean", {});
     const plannedP50  = getPlanned(matrix, op.proc, op.chir, "p50", {});
     const startReal = Math.max(tReal, START);
@@ -115,7 +276,7 @@ function minToTime(m) {
   return `${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
 }
 
-// ── Gantt — 2 bars: active plan + actual ──────────────────────────────────
+// ── Gantt ──────────────────────────────────────────────────────────────────
 const DAY_W = END - START + 60;
 function px(min, width) { return ((min - START) / DAY_W) * width; }
 
@@ -129,7 +290,7 @@ function GanttRow3({ row, width, planColor }) {
         position:"absolute", left:pL, width:pW, height:13, top:1,
         border:`2px solid ${planColor}`, borderRadius:3, opacity:0.8,
       }} />
-      <div title={`Rzeczywiste: ${minToTime(row.startReal)}–${minToTime(row.endReal)} (${row.actual} min)`} style={{
+      <div title={`Actual: ${minToTime(row.startReal)}–${minToTime(row.endReal)} (${row.actual} min)`} style={{
         position:"absolute", left:rL, width:rW, height:13, top:17,
         background:color, borderRadius:3, opacity:0.9,
         ...(row.delay > 10 ? { outline:"2px solid #ff4d4d", outlineOffset:1 } : {}),
@@ -184,11 +345,14 @@ function ModeBtn({ mode, active, onClick, label, desc, color }) {
 // ── main ──────────────────────────────────────────────────────────────────
 export default function ORSimV3() {
   const [procParams, setProcParams] = useState(DEFAULT_PROC_PARAMS);
-  const [planMode, setPlanMode] = useState("mean"); // mean | p50 | p80 | custom
-  const [customOffsets, setCustomOffsets] = useState({ Appendectomy:0, Cholecystectomy:0, "Hernia repair":0 });
+  const [planMode, setPlanMode] = useState("mean");
+  const [customOffsets, setCustomOffsets] = useState({ Appendektomia:0, Cholecystektomia:0, "Naprawa przepukliny":0 });
   const [runs, setRuns] = useState(0);
   const [activeTab, setActiveTab] = useState("gantt");
   const [showHelp, setShowHelp] = useState(false);
+  const [lang, setLang] = useState("pl");
+
+  const t = T[lang];
 
   const matrix = useMemo(() => generateHistory(procParams), [procParams, runs]);
 
@@ -202,7 +366,6 @@ export default function ORSimV3() {
     setResults(simulate(DEFAULT_PLAN, procParams, matrix, planMode, customOffsets));
   }, [procParams, matrix, planMode, customOffsets]);
 
-  // auto re-simulate when mode changes — generate fresh matrix to avoid stale useMemo
   const handleModeChange = (mode) => {
     setPlanMode(mode);
     const freshMatrix = generateHistory(procParams);
@@ -219,8 +382,8 @@ export default function ORSimV3() {
   const totalDelay = results.reduce((a, r) => a + Math.max(0, r.delay), 0);
   const lastEnd    = results.at(-1)?.endReal ?? END;
   const overtime   = lastEnd > END;
-  const efficiency    = ((results.reduce((a,r)=>a+r.actual,0) + PREP*(results.length-1)) / (END-START)) * 100;
-  const utilization   = (results.reduce((a,r)=>a+r.actual,0) / (END-START)) * 100;
+  const efficiency   = ((results.reduce((a,r)=>a+r.actual,0) + PREP*(results.length-1)) / (END-START)) * 100;
+  const utilization  = (results.reduce((a,r)=>a+r.actual,0) / (END-START)) * 100;
 
   const surgeonBias = Object.keys(SURGEON_COLORS).map(s => {
     const ops = results.filter(r => r.chir === s);
@@ -230,7 +393,8 @@ export default function ORSimV3() {
   const procBias = Object.keys(DEFAULT_PROC_PARAMS).map(p => {
     const ops = results.filter(r => r.proc === p);
     const avg = ops.length ? ops.reduce((a,r)=>a+r.delay,0)/ops.length : 0;
-    return { proc: p.replace(" repair",""), bias: Math.round(avg*10)/10 };
+    const label = lang === "en" ? (PROC_NAMES_EN[p] ?? p) : p.replace("Naprawa przepukliny","Przepuklina");
+    return { proc: label, bias: Math.round(avg*10)/10 };
   });
   const matrixRows = Object.entries(matrix).flatMap(([proc, surgs]) =>
     Object.entries(surgs).map(([surg, { p50, p80, mean }]) => ({
@@ -244,11 +408,13 @@ export default function ORSimV3() {
   }));
 
   const MODE_CONFIG = {
-    mean: { color:"#ff6b6b", label:"Średnia",  desc:"zawyżona przez długie operacje" },
-    p50:  { color:"#e07b39", label:"P50 (mediana)", desc:"50% operacji przekroczy plan" },
-    p80:  { color:"#6bcb77", label:"P80",      desc:"tylko 20% przekroczy plan" },
-    custom:{ color:"#a78bfa", label:"Własny",  desc:"ręczna korekta per procedura" },
+    mean:   { color:"#ff6b6b", ...t.planning.modes.mean },
+    p50:    { color:"#e07b39", ...t.planning.modes.p50 },
+    p80:    { color:"#6bcb77", ...t.planning.modes.p80 },
+    custom: { color:"#a78bfa", ...t.planning.modes.custom },
   };
+
+  const procLabel = (proc) => lang === "en" ? (PROC_NAMES_EN[proc] ?? proc) : proc;
 
   return (
     <div style={{ minHeight:"100vh", background:"#0a0a0f", color:"#ddd",
@@ -277,27 +443,39 @@ export default function ORSimV3() {
       <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20 }}>
         <div>
           <div style={{ fontSize:10, letterSpacing:"0.2em", color:"#333", textTransform:"uppercase",
-            fontFamily:"'JetBrains Mono',monospace", marginBottom:6 }}>OR · Symulator Sali — v3</div>
+            fontFamily:"'JetBrains Mono',monospace", marginBottom:6 }}>{t.subtitle}</div>
           <h1 style={{ margin:0, fontSize:20, fontWeight:700, color:"#f0ede8", letterSpacing:"-0.02em" }}>
-            Błąd planowania & rozkład log-normalny
+            {t.title}
           </h1>
           <div style={{ fontSize:11, color:"#444", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
-            Tryb planu: <span style={{ color: MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</span>
-            {" "}· run #{runs}
+            {t.planMode}: <span style={{ color: MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</span>
+            {" "}· {t.run} #{runs}
           </div>
         </div>
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+          {/* lang switcher */}
+          <div style={{ display:"flex", borderRadius:8, overflow:"hidden", border:"1px solid #252530" }}>
+            {["pl","en"].map(l => (
+              <button key={l} onClick={() => setLang(l)} style={{
+                padding:"8px 14px", background: lang===l ? "#e07b39" : "transparent",
+                color: lang===l ? "#fff" : "#555", border:"none", cursor:"pointer",
+                fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:12,
+                transition:"all 0.15s",
+              }}>{l.toUpperCase()}</button>
+            ))}
+          </div>
           <button onClick={() => setShowHelp(true)} style={{
             background:"transparent", color:"#555", border:"1px solid #252530",
             borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700,
             cursor:"pointer", fontFamily:"'Syne',sans-serif",
-          }}>? Instrukcja</button>
+          }}>{t.help}</button>
           <button onClick={runSim} style={{
             background:"linear-gradient(135deg,#e07b39,#c45e1a)", color:"#fff",
             border:"none", borderRadius:8, padding:"10px 24px", fontSize:13,
             fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif",
-          }}>▶ Uruchom</button>
+          }}>{t.runBtn}</button>
         </div>
+      </div>
 
       {/* ── HELP MODAL ── */}
       {showHelp && (
@@ -315,60 +493,36 @@ export default function ORSimV3() {
               border:"none", color:"#555", fontSize:20, cursor:"pointer", lineHeight:1,
             }}>✕</button>
             <div style={{ fontSize:10, letterSpacing:"0.15em", color:"#444", textTransform:"uppercase",
-              fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>Instrukcja obsługi</div>
-            <h2 style={{ margin:"0 0 20px", fontSize:18, color:"#f0ede8" }}>Symulator Sali Operacyjnej</h2>
-
-            {[
-              {
-                n:"1", title:"Rozkłady czasów realizacji",
-                body:"Ustaw parametry rozkładu log-normalnego per procedura. Suwak μ (mu) przesuwa krzywą — zmienia typowy czas operacji. Suwak σ (sigma) zmienia szerokość krzywej — im większy, tym więcej niespodzianek. Na wykresie widoczne są trzy linie: czerwona = średnia (zawyżona), pomarańczowa = P50 (typowy), zielona = P80 (bezpieczny).",
-              },
-              {
-                n:"2", title:"Parametry planowania",
-                body:"Wybierz tryb wyznaczania planu: Średnia — błędne podejście, zawyżona przez długie operacje. P50 (mediana) — typowy czas, połowa operacji przekroczy plan. P80 — bezpieczniejszy, tylko 20% operacji przekroczy plan. Własny — ręczna korekta per procedura suwakiem offsetu.",
-              },
-              {
-                n:"3", title:"Uruchom symulację",
-                body:"Kliknij ▶ Uruchom — symulator wylosuje rzeczywiste czasy z rozkładu log-normalnego i porówna je z planem. Każde uruchomienie daje inny wynik.",
-              },
-              {
-                n:"4", title:"Gantt — odczytaj wyniki",
-                body:"Kolorowa ramka = plan (aktywny tryb). Pełny pasek = rzeczywistość. Czerwone obramowanie = przekroczenie planu o ponad 10 minut. Tabela pokazuje plan, start/koniec planu, czas rzeczywisty i Δ (różnicę).",
-              },
-              {
-                n:"5", title:"KPI",
-                body:"Suma opóźnień — łączna różnica plan vs rzeczywistość. Skumul. przekroczenia — suma tylko operacji dłuższych niż plan. Efektywność sali — operacje + przygotowania / dostępny czas. Utilization — tylko czas operacji / dostępny czas. Koniec ostatniej op. — czerwony = nadgodziny.",
-              },
-            ].map(({ n, title, body }) => (
-              <div key={n} style={{ marginBottom:18 }}>
+              fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{t.helpModal.label}</div>
+            <h2 style={{ margin:"0 0 20px", fontSize:18, color:"#f0ede8" }}>{t.helpModal.title}</h2>
+            {t.helpModal.steps.map(({ title, body }, i) => (
+              <div key={i} style={{ marginBottom:18 }}>
                 <div style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:6 }}>
                   <span style={{ background:"#e07b39", color:"#fff", borderRadius:"50%", width:20, height:20,
                     display:"inline-flex", alignItems:"center", justifyContent:"center",
-                    fontSize:11, fontWeight:700, flexShrink:0 }}>{n}</span>
+                    fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</span>
                   <span style={{ fontSize:13, fontWeight:700, color:"#e0d8cc" }}>{title}</span>
                 </div>
                 <div style={{ fontSize:12, color:"#666", lineHeight:1.7, paddingLeft:30 }}>{body}</div>
               </div>
             ))}
-
             <div style={{ borderTop:"1px solid #1e1e2a", paddingTop:14, marginTop:4,
               fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", textAlign:"center" }}>
-              Kliknij gdziekolwiek poza oknem aby zamknąć
+              {t.helpModal.close}
             </div>
           </div>
         </div>
       )}
-      </div>
 
       {/* KPIs */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:10, marginBottom:16 }}>
         {[
-          { val:`${sumDelay>0?"+":""}${sumDelay}'`, label:"Suma opóźnień", color:sumDelay>0?"#ff6b6b":sumDelay<0?"#6bcb77":"#888", tip:null },
-          { val:`${totalDelay}'`, label:"Skumul. przekrocz.", color:"#ff9f43", tip:null },
-          { val:`${efficiency.toFixed(1)}%`, label:"Efektywność sali", color:efficiency>=85?"#6bcb77":efficiency>=70?"#e0c039":"#ff6b6b", tip:"op. + przygotowania / czas dostępny" },
-          { val:`${utilization.toFixed(1)}%`, label:"Utilization (op.)", color:utilization>=75?"#6bcb77":utilization>=60?"#e0c039":"#ff6b6b", tip:"tylko czas operacji / czas dostępny" },
-          { val:minToTime(lastEnd), label:"Koniec ostatniej op.", color:overtime?"#ff6b6b":"#6bcb77", tip:null },
-          { val:`${results.filter(r=>r.delay>0).length}/${results.length}`, label:"Op. z przekrocz.", color:"#a78bfa", tip:null },
+          { val:`${sumDelay>0?"+":""}${sumDelay}'`, label:t.kpi.sumDelay, color:sumDelay>0?"#ff6b6b":sumDelay<0?"#6bcb77":"#888", tip:null },
+          { val:`${totalDelay}'`, label:t.kpi.totalDelay, color:"#ff9f43", tip:null },
+          { val:`${efficiency.toFixed(1)}%`, label:t.kpi.efficiency, color:efficiency>=85?"#6bcb77":efficiency>=70?"#e0c039":"#ff6b6b", tip:t.kpi.efficiencyTip },
+          { val:`${utilization.toFixed(1)}%`, label:t.kpi.utilization, color:utilization>=75?"#6bcb77":utilization>=60?"#e0c039":"#ff6b6b", tip:t.kpi.utilizationTip },
+          { val:minToTime(lastEnd), label:t.kpi.lastEnd, color:overtime?"#ff6b6b":"#6bcb77", tip:null },
+          { val:`${results.filter(r=>r.delay>0).length}/${results.length}`, label:t.kpi.overruns, color:"#a78bfa", tip:null },
         ].map(({ val, label, color, tip }) => (
           <div key={label} className="card" title={tip ?? ""}>
             <div className="kpi-val" style={{ color }}>{val}</div>
@@ -380,13 +534,7 @@ export default function ORSimV3() {
 
       {/* tabs */}
       <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-        {[
-          ["gantt","Gantt"],
-          ["planning","Parametry planowania"],
-          ["bias","Błąd planowania"],
-          ["matrix","Macierz P50/P80 (Monte Carlo)"],
-          ["params","Rozkłady czasów realizacji"],
-        ].map(([k,lbl]) => (
+        {Object.entries(t.tabs).map(([k,lbl]) => (
           <button key={k} className={`tab ${activeTab===k?"tab-active":"tab-inactive"}`}
             onClick={()=>setActiveTab(k)}>{lbl}</button>
         ))}
@@ -395,20 +543,19 @@ export default function ORSimV3() {
       {/* ── GANTT tab ── */}
       {activeTab === "gantt" && (
         <div className="card">
-          {/* legend */}
           <div style={{ display:"flex", gap:20, marginBottom:14, flexWrap:"wrap", fontSize:11 }}>
             <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
               <span style={{ border:`2px solid ${MODE_CONFIG[planMode].color}`, width:18, height:10, borderRadius:2, display:"inline-block" }} />
-              Plan — <strong style={{ color: MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</strong>
+              {t.gantt.planLabel} <strong style={{ color: MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</strong>
             </span>
             <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
               <span style={{ background:"#aaa", width:18, height:10, borderRadius:2, display:"inline-block" }} />
-              Rzeczywistość
+              {t.gantt.actual}
             </span>
             {["A","B","C"].map(s => (
               <span key={s} style={{ display:"flex", alignItems:"center", gap:5, color:"#666" }}>
                 <span style={{ background:SURGEON_COLORS[s], width:10, height:10, borderRadius:2, display:"inline-block" }} />
-                Chirurg {s}
+                {t.gantt.surgeon} {s}
               </span>
             ))}
           </div>
@@ -421,24 +568,23 @@ export default function ORSimV3() {
                 <div key={row.id} style={{ display:"grid", gridTemplateColumns:"120px 1fr", alignItems:"center" }}>
                   <div style={{ fontSize:10, color:"#666", fontFamily:"'JetBrains Mono',monospace", paddingRight:8 }}>
                     Op {row.id} · <span style={{ color:SURGEON_COLORS[row.chir] }}>{row.chir}</span>
-                    <br /><span style={{ color:"#444", fontSize:9 }}>{row.proc}</span>
+                    <br /><span style={{ color:"#444", fontSize:9 }}>{procLabel(row.proc)}</span>
                   </div>
                   <GanttRow3 row={row} width={580} planColor={MODE_CONFIG[planMode].color} />
                 </div>
               ))}
             </div>
           </div>
-          {/* table */}
           <table style={{ width:"100%", borderCollapse:"collapse", marginTop:16 }}>
             <thead><tr>
-              {["Op","Chir","Procedura","Plan","Start (plan)","Koniec (plan)","Rzecz.","Δ","Start","Koniec"].map(h=><th key={h}>{h}</th>)}
+              {t.gantt.tableHeaders.map(h=><th key={h}>{h}</th>)}
             </tr></thead>
             <tbody>
               {results.map(r => (
                 <tr key={r.id}>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.id}</td>
                   <td><span style={{ color:SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
-                  <td style={{ color:"#666", fontSize:11 }}>{r.proc}</td>
+                  <td style={{ color:"#666", fontSize:11 }}>{procLabel(r.proc)}</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", color: MODE_CONFIG[planMode].color, fontWeight:600 }}>{r.planned}'</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.startPlan)}</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.endPlan)}</td>
@@ -460,11 +606,10 @@ export default function ORSimV3() {
       {/* ── PLANNING PARAMS tab ── */}
       {activeTab === "planning" && (
         <div style={{ display:"grid", gap:14 }}>
-          {/* mode switcher */}
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
               marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
-              Tryb wyznaczania planu operacji
+              {t.planning.modeTitle}
             </div>
             <div style={{ display:"flex", gap:10, marginBottom:16 }}>
               {Object.entries(MODE_CONFIG).map(([mode, cfg]) => (
@@ -473,16 +618,13 @@ export default function ORSimV3() {
               ))}
             </div>
             <div style={{ background:"#0d0d14", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#555", lineHeight:1.7 }}>
-              <strong style={{ color:"#777" }}>Dlaczego planowanie ze średniej jest błędem?</strong><br/>
-              Rozkład log-normalny ma długi ogon po prawej — kilka bardzo długich operacji
-              zawyża średnią znacznie powyżej mediany. Jeśli planujemy ze średniej,
-              <span style={{ color:"#ff6b6b" }}> połowa operacji systematycznie przekracza plan</span> — nie z winy chirurga,
-              ale z powodu złego narzędzia statystycznego.
-              P50 (mediana) jest odporna na wartości odstające. P80 daje bufor bezpieczeństwa.
+              <strong style={{ color:"#777" }}>{t.planning.explainTitle}</strong><br/>
+              {t.planning.explainBody}
+              <span style={{ color:"#ff6b6b" }}>{t.planning.explainHighlight}</span>
+              {t.planning.explainSuffix}
             </div>
           </div>
 
-          {/* per-procedure sliders + comparison */}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
             {Object.entries(DEFAULT_PROC_PARAMS).map(([proc, { mu, sigma }]) => {
               const color = PROC_COLORS[proc];
@@ -492,33 +634,27 @@ export default function ORSimV3() {
               const p80  = cell.p80  ?? Math.round(lognormP80(mu, sigma));
               const offset = customOffsets[proc] ?? 0;
               const { curve } = buildPDFCurve(mu, sigma);
-
-              // mark mean and p50 on chart
               const meanVal = Math.round(lognormMean(mu, sigma));
               const medVal  = Math.round(lognormP50(mu, sigma));
               const p80Val  = Math.round(lognormP80(mu, sigma));
 
               return (
                 <div key={proc} className="card" style={{ borderTop:`2px solid ${color}` }}>
-                  <div style={{ fontSize:13, fontWeight:600, color, marginBottom:12 }}>{proc}</div>
-
-                  {/* comparison badges */}
+                  <div style={{ fontSize:13, fontWeight:600, color, marginBottom:12 }}>{procLabel(proc)}</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:14 }}>
                     {[
-                      { label:"Średnia", val:`${mean}'`, color:"#ff6b6b", note:"zawyżona" },
-                      { label:"P50 (mediana)", val:`${p50}'`, color:"#e07b39", note:"typowy" },
-                      { label:"P80", val:`${p80}'`, color:"#6bcb77", note:"bezpieczny" },
+                      { key:"mean", label:"Średnia", val:`${mean}'`, color:"#ff6b6b", note:t.planning.badges.mean },
+                      { key:"p50",  label:"P50",     val:`${p50}'`,  color:"#e07b39", note:t.planning.badges.p50 },
+                      { key:"p80",  label:"P80",     val:`${p80}'`,  color:"#6bcb77", note:t.planning.badges.p80 },
                     ].map(b => (
-                      <div key={b.label} style={{ background:"#0d0d14", borderRadius:6, padding:"8px 10px",
-                        border:`1px solid ${planMode === (b.label==="Średnia"?"mean":b.label==="P80"?"p80":"p50") ? b.color+"66" : "#1e1e2a"}` }}>
+                      <div key={b.key} style={{ background:"#0d0d14", borderRadius:6, padding:"8px 10px",
+                        border:`1px solid ${planMode === b.key ? b.color+"66" : "#1e1e2a"}` }}>
                         <div style={{ fontSize:16, fontWeight:600, color:b.color, fontFamily:"'JetBrains Mono',monospace" }}>{b.val}</div>
                         <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{b.label}</div>
                         <div style={{ fontSize:9, color:b.color+"99" }}>{b.note}</div>
                       </div>
                     ))}
                   </div>
-
-                  {/* PDF z liniami dla średniej i P50 */}
                   <ResponsiveContainer width="100%" height={100}>
                     <AreaChart data={curve} margin={{ top:8, right:4, bottom:0, left:-28 }}>
                       <defs>
@@ -542,15 +678,13 @@ export default function ORSimV3() {
                         fill={`url(#pg-${proc.replace(/\s/g,"")})`} dot={false} activeDot={{ r:3, fill:color }} />
                     </AreaChart>
                   </ResponsiveContainer>
-
-                  {/* custom offset slider — only shown in custom mode */}
                   {planMode === "custom" && (
                     <div style={{ marginTop:12, padding:"10px 12px", background:"#0d0d14", borderRadius:6 }}>
-                      <Slider label={`Korekta planu (offset)`} value={offset} min={-20} max={30} step={5}
+                      <Slider label={t.planning.offsetLabel} value={offset} min={-20} max={30} step={5}
                         onChange={v => { setOffset(proc, v); setResults(simulate(DEFAULT_PLAN, procParams, matrix, "custom", {...customOffsets, [proc]:v})); }}
                         color={color} />
                       <div style={{ fontSize:10, color:"#555", marginTop:2 }}>
-                        Baza P50 ({p50}') + {offset} = <span style={{ color, fontWeight:600 }}>{p50 + offset}'</span>
+                        {t.planning.offsetBase} ({p50}') + {offset} = <span style={{ color, fontWeight:600 }}>{p50 + offset}'</span>
                       </div>
                     </div>
                   )}
@@ -559,15 +693,14 @@ export default function ORSimV3() {
             })}
           </div>
 
-          {/* diff table */}
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
               marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-              Porównanie planów — różnica średnia vs P50 per chirurg × procedura
+              {t.planning.diffTitle}
             </div>
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
               <thead><tr>
-                {["Chirurg","Procedura","Średnia","P50","P80","Różnica śr.−P50","Aktywny plan"].map(h=><th key={h}>{h}</th>)}
+                {t.planning.diffHeaders.map(h=><th key={h}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {matrixRows.map((r,i) => {
@@ -575,13 +708,11 @@ export default function ORSimV3() {
                   return (
                     <tr key={i}>
                       <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
-                      <td style={{ color:"#888", fontSize:11 }}>{r.proc}</td>
+                      <td style={{ color:"#888", fontSize:11 }}>{procLabel(r.proc)}</td>
                       <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
                       <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
                       <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43", fontWeight:600 }}>
-                        +{diff}'
-                      </td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43", fontWeight:600 }}>+{diff}'</td>
                       <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
                         color: MODE_CONFIG[planMode].color }}>{r.planned}'</td>
                     </tr>
@@ -598,7 +729,7 @@ export default function ORSimV3() {
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-              Średni błąd planowania per chirurg (min)
+              {t.bias.bySurgeon}
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={surgeonBias} margin={{ top:4,right:4,bottom:0,left:-10 }}>
@@ -607,7 +738,7 @@ export default function ORSimV3() {
                 <YAxis tick={{ fontSize:10, fill:"#555" }} />
                 <ReferenceLine y={0} stroke="#333" strokeWidth={1.5} />
                 <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:12 }}
-                  formatter={v=>[`${v>0?"+":""}${v} min`,"Avg Δ"]} />
+                  formatter={v=>[`${v>0?"+":""}${v} min`, t.bias.avgDelta]} />
                 <Bar dataKey="bias" radius={[4,4,0,0]}>
                   {surgeonBias.map((e,i)=><Cell key={i} fill={e.fill} />)}
                 </Bar>
@@ -616,7 +747,7 @@ export default function ORSimV3() {
           </div>
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-              Średni błąd planowania per procedura (min)
+              {t.bias.byProc}
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={procBias} margin={{ top:4,right:4,bottom:0,left:-10 }}>
@@ -625,21 +756,21 @@ export default function ORSimV3() {
                 <YAxis tick={{ fontSize:10, fill:"#555" }} />
                 <ReferenceLine y={0} stroke="#333" strokeWidth={1.5} />
                 <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:12 }}
-                  formatter={v=>[`${v>0?"+":""}${v} min`,"Avg Δ"]} />
+                  formatter={v=>[`${v>0?"+":""}${v} min`, t.bias.avgDelta]} />
                 <Bar dataKey="bias" radius={[4,4,0,0]} fill="#4a9eff" />
               </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="card" style={{ gridColumn:"1/-1" }}>
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-              Plan vs Rzeczywistość — scatter
+              {t.bias.scatter}
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <ScatterChart margin={{ top:4,right:4,bottom:0,left:-10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
                 <XAxis dataKey="planned" name="Plan" type="number" tick={{ fontSize:10, fill:"#555" }} label={{ value:"Plan (min)", position:"insideBottom", offset:-2, fill:"#444", fontSize:10 }} />
-                <YAxis dataKey="actual" name="Rzecz." type="number" tick={{ fontSize:10, fill:"#555" }} label={{ value:"Rzecz. (min)", angle:-90, position:"insideLeft", fill:"#444", fontSize:10 }} />
-                <ReferenceLine segment={[{x:30,y:30},{x:130,y:130}]} stroke="#333" strokeDasharray="4 2" label={{ value:"Idealny plan", fill:"#333", fontSize:9 }} />
+                <YAxis dataKey="actual" name="Actual" type="number" tick={{ fontSize:10, fill:"#555" }} label={{ value:"Actual (min)", angle:-90, position:"insideLeft", fill:"#444", fontSize:10 }} />
+                <ReferenceLine segment={[{x:30,y:30},{x:130,y:130}]} stroke="#333" strokeDasharray="4 2" label={{ value:t.bias.idealPlan, fill:"#333", fontSize:9 }} />
                 <Tooltip cursor={{ strokeDasharray:"3 3" }}
                   contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:11 }}
                   formatter={(v,n,p)=>[`${p.payload.actual} min`, p.payload.name]} />
@@ -656,17 +787,17 @@ export default function ORSimV3() {
       {activeTab === "matrix" && (
         <div className="card">
           <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-            Macierz Chirurg × Procedura
+            {t.matrix.title}
           </div>
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead><tr>
-              {["Chirurg","Procedura","Średnia","P50","P80","Aktywny plan"].map(h=><th key={h}>{h}</th>)}
+              {t.matrix.headers.map(h=><th key={h}>{h}</th>)}
             </tr></thead>
             <tbody>
               {matrixRows.map((r,i) => (
                 <tr key={i}>
                   <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
-                  <td style={{ color:"#888", fontSize:11 }}>{r.proc}</td>
+                  <td style={{ color:"#888", fontSize:11 }}>{procLabel(r.proc)}</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
@@ -679,7 +810,7 @@ export default function ORSimV3() {
         </div>
       )}
 
-      {/* ── PARAMS (rozkłady) tab ── */}
+      {/* ── PARAMS tab ── */}
       {activeTab === "params" && (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
           {Object.entries(procParams).map(([proc, { mu, sigma }]) => {
@@ -690,9 +821,9 @@ export default function ORSimV3() {
             const meanVal = Math.round(lognormMean(mu, sigma));
             return (
               <div key={proc} className="card" style={{ borderTop:`2px solid ${color}` }}>
-                <div style={{ fontSize:13, fontWeight:600, color, marginBottom:4 }}>{proc}</div>
+                <div style={{ fontSize:13, fontWeight:600, color, marginBottom:4 }}>{procLabel(proc)}</div>
                 <div style={{ fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", marginBottom:14 }}>
-                  mediana ≈ {previewMedian}' · średnia ≈ {meanVal}' · P80 ≈ {previewP80}'
+                  P50 ≈ {previewMedian}' · śr ≈ {meanVal}' · P80 ≈ {previewP80}'
                 </div>
                 <Slider label="μ (log-scale mean)" value={mu} min={3.5} max={5.0} step={0.01}
                   onChange={v => setParam(proc, "mu", v)} color={color} />
@@ -700,7 +831,7 @@ export default function ORSimV3() {
                   onChange={v => setParam(proc, "sigma", v)} color={color} />
                 <div style={{ marginTop:14 }}>
                   <div style={{ fontSize:10, color:"#333", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, fontFamily:"'JetBrains Mono',monospace" }}>
-                    Rozkład — czerwona = średnia, pomarańcz. = mediana
+                    {t.params.distLabel}
                   </div>
                   <ResponsiveContainer width="100%" height={110}>
                     <AreaChart data={curve} margin={{ top:8, right:4, bottom:0, left:-28 }}>
@@ -731,7 +862,7 @@ export default function ORSimV3() {
                     const cell = matrix[proc]?.[s];
                     return (
                       <div key={s} style={{ display:"flex", justifyContent:"space-between", marginBottom:3, fontSize:11 }}>
-                        <span style={{ color:SURGEON_COLORS[s], fontWeight:600 }}>Chirurg {s}</span>
+                        <span style={{ color:SURGEON_COLORS[s], fontWeight:600 }}>{t.params.surgeon} {s}</span>
                         <span style={{ fontFamily:"'JetBrains Mono',monospace", color:"#888" }}>
                           śr {cell?.mean}' · P50 {cell?.p50}' · P80 {cell?.p80}'
                         </span>
