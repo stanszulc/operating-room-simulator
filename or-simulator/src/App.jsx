@@ -4,28 +4,23 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 
 const START = 8 * 60, END = 16 * 60, PREP = 15, SIM_HISTORY = 200;
 const SURGEON_COLORS = { A: "#e07b39", B: "#4a9eff", C: "#a78bfa" };
-const PROC_COLORS = { Appendektomia: "#e07b39", Cholecystektomia: "#4a9eff", "Naprawa przepukliny": "#a78bfa" };
+const PROC_COLORS = { Appendectomy: "#e07b39", Cholecystectomy: "#4a9eff", "Hernia Repair": "#a78bfa" };
 const SURGEONS = ["A", "B", "C"];
-const PROCS = ["Appendektomia", "Cholecystektomia", "Naprawa przepukliny"];
+const PROCS = ["Appendectomy", "Cholecystectomy", "Hernia Repair"];
 
 const DEFAULT_PROC_PARAMS = {
-  Appendektomia:         { mu: 4.06, sigma: 0.28 },
-  Cholecystektomia:      { mu: 4.28, sigma: 0.32 },
-  "Naprawa przepukliny": { mu: 3.91, sigma: 0.26 },
+  Appendectomy:   { mu: 4.06, sigma: 0.28 },
+  Cholecystectomy:{ mu: 4.28, sigma: 0.32 },
+  "Hernia Repair":{ mu: 3.91, sigma: 0.26 },
 };
 const SURGEON_SKILL = { A: 0.92, B: 1.10, C: 1.00 };
 
 // ── i18n ──────────────────────────────────────────────────────────────────
-const PROC_NAMES_EN = {
-  Appendektomia: "Appendectomy",
-  Cholecystektomia: "Cholecystectomy",
-  "Naprawa przepukliny": "Hernia Repair",
-};
 
 const T = {
   pl: {
     subtitle: "OR · Symulator Sali — v4",
-    title: "Błąd planowania & rozkład log-normalny",
+    title: "Symulacja Sali Operacyjnej",
     planMode: "Tryb planu",
     run: "run",
     help: "? Instrukcja",
@@ -114,7 +109,7 @@ const T = {
   },
   en: {
     subtitle: "OR · Operating Room Simulator — v4",
-    title: "Planning Bias & Log-Normal Distribution",
+    title: "Operating Room Simulator",
     planMode: "Plan mode",
     run: "run",
     help: "? Help",
@@ -374,9 +369,89 @@ function buildEmptySlots(n) {
   return Array.from({ length: n }, () => ({ proc: null, chir: "A" }));
 }
 
-function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, procLabel }) {
+// ── Mini Gantt preview (plan only, live) ─────────────────────────────────
+function MiniGantt({ slots, matrix, planMode, customOffsets, planColor }) {
+  // build timeline from filled slots only
+  const filledSlots = slots.filter(s => s.proc !== null);
+  if (filledSlots.length === 0) return null;
+
+  let t = START;
+  const bars = filledSlots.map((s, i) => {
+    const dur = getPlanned(matrix, s.proc, s.chir, planMode, customOffsets);
+    const start = t;
+    const end = t + dur;
+    t = end + PREP;
+    return { ...s, start, end, dur, id: i + 1 };
+  });
+  const lastEnd = bars[bars.length - 1].end;
+  const overtime = lastEnd > END;
+  const W = 560;
+
+  return (
+    <div style={{ marginTop:20, background:"#0a0a0f", borderRadius:8, padding:"14px 16px",
+      border:"1px solid #1e1e2a" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+          fontFamily:"'JetBrains Mono',monospace" }}>Plan preview · {planMode.toUpperCase()}</div>
+        <div style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
+          color: overtime ? "#ff6b6b" : "#6bcb77", fontWeight:600 }}>
+          End: {minToTime(lastEnd)}{overtime ? " ⚠ overtime" : ""}
+        </div>
+      </div>
+      {/* time axis */}
+      <div style={{ position:"relative", height:16, marginBottom:4 }}>
+        {Array.from({ length: 9 }, (_, i) => (8 + i) * 60).map(m => (
+          <span key={m} style={{
+            position:"absolute", left: ((m - START) / DAY_W) * W,
+            transform:"translateX(-50%)", fontSize:9, color:"#333", fontFamily:"monospace",
+          }}>{minToTime(m)}</span>
+        ))}
+      </div>
+      {/* bars */}
+      <div style={{ position:"relative", height: bars.length * 26 }}>
+        {/* end of day marker */}
+        <div style={{
+          position:"absolute", left:((END - START) / DAY_W) * W, top:0, bottom:0,
+          width:1, background:"#ff6b6b33",
+        }} />
+        {bars.map((bar) => {
+          const color = PROC_COLORS[bar.proc] ?? "#888";
+          const surgColor = SURGEON_COLORS[bar.chir];
+          const bL = ((bar.start - START) / DAY_W) * W;
+          const bW = Math.max((bar.dur / DAY_W) * W, 4);
+          const isOver = bar.end > END;
+          return (
+            <div key={bar.id} style={{ position:"absolute", top:(bar.id-1)*26, height:20,
+              left:bL, width:bW,
+              background:`${color}33`, border:`1.5px solid ${color}`,
+              borderRadius:4,
+              ...(isOver ? { outline:"1.5px solid #ff4d4d", outlineOffset:1 } : {}),
+            }}
+              title={`Op ${bar.id} · ${bar.proc} · Surg ${bar.chir} · ${minToTime(bar.start)}–${minToTime(bar.end)} (${bar.dur} min)`}>
+              <span style={{
+                position:"absolute", left:5, top:"50%", transform:"translateY(-50%)",
+                fontSize:9, fontFamily:"'JetBrains Mono',monospace", whiteSpace:"nowrap",
+                color: surgColor, fontWeight:600,
+              }}>{bar.proc} · {bar.dur}'</span>
+              {/* end time label */}
+              <span style={{
+                position:"absolute", right:-1, top:-14,
+                fontSize:8, fontFamily:"'JetBrains Mono',monospace",
+                color: isOver ? "#ff6b6b" : "#555",
+              }}>{minToTime(bar.end)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t,
+  matrix, planMode, customOffsets, planColor }) {
   const [dragProc, setDragProc] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
+  const [dragSlotIdx, setDragSlotIdx] = useState(null);
 
   const handleDragStart = (proc) => setDragProc(proc);
   const handleDragEnd   = () => { setDragProc(null); setDragOverIdx(null); };
@@ -387,9 +462,6 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, pro
     setDragProc(null);
     setDragOverIdx(null);
   };
-
-  // reorder slots by dragging slots themselves
-  const [dragSlotIdx, setDragSlotIdx] = useState(null);
 
   const handleSlotDragStart = (idx) => setDragSlotIdx(idx);
   const handleSlotDrop = (idx) => {
@@ -408,119 +480,129 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, pro
   const allReady = readyCount === slots.length;
 
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"200px 1fr", gap:16 }}>
-      {/* left: procedure pool */}
-      <div>
-        <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-          marginBottom:10, fontFamily:"'JetBrains Mono',monospace" }}>{t.pool}</div>
-        {PROCS.map(proc => {
-          const color = PROC_COLORS[proc];
-          return (
-            <div key={proc}
-              draggable
-              onDragStart={() => handleDragStart(proc)}
-              onDragEnd={handleDragEnd}
-              style={{
-                background:`${color}18`, border:`1px solid ${color}55`,
-                borderRadius:8, padding:"10px 12px", marginBottom:8,
-                cursor:"grab", userSelect:"none",
-                fontSize:12, fontWeight:600, color,
-                transition:"transform 0.1s",
-                transform: dragProc === proc ? "scale(0.97)" : "scale(1)",
-              }}>
-              {procLabel(proc)}
-            </div>
-          );
-        })}
-        <div style={{ marginTop:16, fontSize:10, color:"#444", lineHeight:1.6,
-          fontFamily:"'JetBrains Mono',monospace" }}>{t.hint}</div>
-      </div>
-
-      {/* right: slots */}
-      <div>
-        {/* ops count slider */}
-        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
-          <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.opsCount}:</span>
-          <input type="range" min={3} max={10} step={1} value={opsCount}
-            onChange={e => {
-              const n = parseInt(e.target.value);
-              setOpsCount(n);
-              setSlots(prev => {
-                if (n > prev.length) return [...prev, ...buildEmptySlots(n - prev.length)];
-                return prev.slice(0, n);
-              });
-            }}
-            style={{ flex:1, accentColor:"#e07b39", cursor:"pointer" }} />
-          <span style={{ fontSize:16, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace",
-            minWidth:20, textAlign:"center" }}>{opsCount}</span>
-        </div>
-
-        {/* slot list */}
-        <div style={{ display:"grid", gap:6 }}>
-          {slots.map((slot, idx) => {
-            const color = slot.proc ? PROC_COLORS[slot.proc] : "#333";
-            const isOver = dragOverIdx === idx;
+    <div>
+      <div style={{ display:"grid", gridTemplateColumns:"200px 1fr", gap:16 }}>
+        {/* left: procedure pool */}
+        <div>
+          <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+            marginBottom:10, fontFamily:"'JetBrains Mono',monospace" }}>{t.pool}</div>
+          {PROCS.map(proc => {
+            const color = PROC_COLORS[proc];
+            const p50 = matrix[proc]?.C?.p50 ?? Math.round(Math.exp(DEFAULT_PROC_PARAMS[proc]?.mu ?? 4.06));
             return (
-              <div key={idx}
-                onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
-                onDragLeave={() => setDragOverIdx(null)}
-                onDrop={() => {
-                  if (dragSlotIdx !== null) handleSlotDrop(idx);
-                  else handleDrop(idx);
-                }}
-                draggable={slot.proc !== null}
-                onDragStart={() => handleSlotDragStart(idx)}
-                onDragEnd={() => { setDragSlotIdx(null); setDragOverIdx(null); }}
+              <div key={proc}
+                draggable
+                onDragStart={() => handleDragStart(proc)}
+                onDragEnd={handleDragEnd}
                 style={{
-                  display:"grid", gridTemplateColumns:"28px 1fr 110px 32px",
-                  alignItems:"center", gap:8,
-                  background: isOver ? "#1a1a2a" : "#111118",
-                  border:`1px solid ${isOver ? "#e07b39" : (slot.proc ? color+"44" : "#1e1e2a")}`,
-                  borderRadius:8, padding:"8px 10px",
-                  transition:"border-color 0.15s, background 0.15s",
-                  cursor: slot.proc ? "grab" : "default",
+                  background:`${color}18`, border:`1px solid ${color}55`,
+                  borderRadius:8, padding:"10px 12px", marginBottom:8,
+                  cursor:"grab", userSelect:"none",
+                  display:"flex", justifyContent:"space-between", alignItems:"center",
+                  transition:"transform 0.1s",
+                  transform: dragProc === proc ? "scale(0.97)" : "scale(1)",
                 }}>
-                {/* number */}
-                <span style={{ fontSize:11, color:"#444", fontFamily:"'JetBrains Mono',monospace",
-                  textAlign:"center" }}>{idx + 1}</span>
-                {/* proc name or empty */}
-                {slot.proc ? (
-                  <span style={{ fontSize:12, fontWeight:600, color }}>{procLabel(slot.proc)}</span>
-                ) : (
-                  <span style={{ fontSize:11, color:"#333", fontStyle:"italic" }}>{t.emptySlot}</span>
-                )}
-                {/* surgeon dropdown */}
-                <select value={slot.chir}
-                  onChange={e => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, chir: e.target.value } : s))}
-                  style={{
-                    background:"#0d0d14", border:"1px solid #252530", borderRadius:6,
-                    color: SURGEON_COLORS[slot.chir], padding:"4px 8px", fontSize:12,
-                    fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif",
-                  }}>
-                  {SURGEONS.map(s => <option key={s} value={s} style={{ color: SURGEON_COLORS[s] }}>{t.slotSurgeon} {s}</option>)}
-                </select>
-                {/* remove button */}
-                <button onClick={() => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, proc: null } : s))}
-                  style={{ background:"transparent", border:"none", color:"#333", cursor:"pointer",
-                    fontSize:14, padding:0, lineHeight:1 }}>{t.remove}</button>
+                <span style={{ fontSize:12, fontWeight:600, color }}>{proc}</span>
+                <span style={{ fontSize:10, color:`${color}99`, fontFamily:"'JetBrains Mono',monospace" }}>~{p50}'</span>
               </div>
             );
           })}
+          <div style={{ marginTop:16, fontSize:10, color:"#333", lineHeight:1.6,
+            fontFamily:"'JetBrains Mono',monospace" }}>{t.hint}</div>
         </div>
 
-        {/* run button */}
-        <button onClick={onRun} disabled={!allReady}
-          style={{
-            marginTop:16, width:"100%", padding:"12px",
-            background: allReady ? "linear-gradient(135deg,#e07b39,#c45e1a)" : "#1a1a24",
-            color: allReady ? "#fff" : "#444",
-            border:"none", borderRadius:8, fontSize:13, fontWeight:700,
-            cursor: allReady ? "pointer" : "not-allowed",
-            fontFamily:"'Syne',sans-serif", transition:"all 0.2s",
-          }}>
-          {allReady ? t.runBtn : `${readyCount}/${slots.length} procedur przypisanych`}
-        </button>
+        {/* right: slots */}
+        <div>
+          {/* ops count slider */}
+          <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
+            <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.opsCount}:</span>
+            <input type="range" min={3} max={10} step={1} value={opsCount}
+              onChange={e => {
+                const n = parseInt(e.target.value);
+                setOpsCount(n);
+                setSlots(prev => {
+                  if (n > prev.length) return [...prev, ...buildEmptySlots(n - prev.length)];
+                  return prev.slice(0, n);
+                });
+              }}
+              style={{ flex:1, accentColor:"#e07b39", cursor:"pointer" }} />
+            <span style={{ fontSize:16, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace",
+              minWidth:20, textAlign:"center" }}>{opsCount}</span>
+          </div>
+
+          {/* slot list */}
+          <div style={{ display:"grid", gap:6 }}>
+            {slots.map((slot, idx) => {
+              const color = slot.proc ? PROC_COLORS[slot.proc] : "#333";
+              const isOver = dragOverIdx === idx;
+              const dur = slot.proc ? getPlanned(matrix, slot.proc, slot.chir, planMode, customOffsets) : null;
+              return (
+                <div key={idx}
+                  onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
+                  onDragLeave={() => setDragOverIdx(null)}
+                  onDrop={() => {
+                    if (dragSlotIdx !== null) handleSlotDrop(idx);
+                    else handleDrop(idx);
+                  }}
+                  draggable={slot.proc !== null}
+                  onDragStart={() => handleSlotDragStart(idx)}
+                  onDragEnd={() => { setDragSlotIdx(null); setDragOverIdx(null); }}
+                  style={{
+                    display:"grid", gridTemplateColumns:"28px 1fr 60px 110px 32px",
+                    alignItems:"center", gap:8,
+                    background: isOver ? "#1a1a2a" : "#111118",
+                    border:`1px solid ${isOver ? "#e07b39" : (slot.proc ? color+"44" : "#1e1e2a")}`,
+                    borderRadius:8, padding:"8px 10px",
+                    transition:"border-color 0.15s, background 0.15s",
+                    cursor: slot.proc ? "grab" : "default",
+                  }}>
+                  <span style={{ fontSize:11, color:"#444", fontFamily:"'JetBrains Mono',monospace",
+                    textAlign:"center" }}>{idx + 1}</span>
+                  {slot.proc ? (
+                    <span style={{ fontSize:12, fontWeight:600, color }}>{slot.proc}</span>
+                  ) : (
+                    <span style={{ fontSize:11, color:"#333", fontStyle:"italic" }}>{t.emptySlot}</span>
+                  )}
+                  {/* duration label */}
+                  <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
+                    color: dur ? `${color}cc` : "#333", textAlign:"right" }}>
+                    {dur ? `${dur}'` : "—"}
+                  </span>
+                  <select value={slot.chir}
+                    onChange={e => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, chir: e.target.value } : s))}
+                    style={{
+                      background:"#0d0d14", border:"1px solid #252530", borderRadius:6,
+                      color: SURGEON_COLORS[slot.chir], padding:"4px 8px", fontSize:12,
+                      fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif",
+                    }}>
+                    {SURGEONS.map(s => <option key={s} value={s} style={{ color: SURGEON_COLORS[s] }}>{t.slotSurgeon} {s}</option>)}
+                  </select>
+                  <button onClick={() => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, proc: null } : s))}
+                    style={{ background:"transparent", border:"none", color:"#333", cursor:"pointer",
+                      fontSize:14, padding:0, lineHeight:1 }}>{t.remove}</button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* run button */}
+          <button onClick={onRun} disabled={!allReady}
+            style={{
+              marginTop:16, width:"100%", padding:"12px",
+              background: allReady ? "linear-gradient(135deg,#e07b39,#c45e1a)" : "#1a1a24",
+              color: allReady ? "#fff" : "#444",
+              border:"none", borderRadius:8, fontSize:13, fontWeight:700,
+              cursor: allReady ? "pointer" : "not-allowed",
+              fontFamily:"'Syne',sans-serif", transition:"all 0.2s",
+            }}>
+            {allReady ? t.runBtn : `${readyCount}/${slots.length} procedur przypisanych`}
+          </button>
+        </div>
       </div>
+
+      {/* live mini gantt */}
+      <MiniGantt slots={slots} matrix={matrix} planMode={planMode}
+        customOffsets={customOffsets} planColor={planColor} />
     </div>
   );
 }
@@ -529,7 +611,7 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, pro
 export default function ORSimV4() {
   const [procParams, setProcParams] = useState(DEFAULT_PROC_PARAMS);
   const [planMode, setPlanMode] = useState("mean");
-  const [customOffsets, setCustomOffsets] = useState({ Appendektomia:0, Cholecystektomia:0, "Naprawa przepukliny":0 });
+  const [customOffsets, setCustomOffsets] = useState({ Appendectomy:0, Cholecystectomy:0, "Hernia Repair":0 });
   const [runs, setRuns] = useState(0);
   const [activeTab, setActiveTab] = useState("schedule");
   const [showHelp, setShowHelp] = useState(false);
@@ -540,7 +622,9 @@ export default function ORSimV4() {
   const [slots, setSlots] = useState(() => buildRandomPlan(6));
 
   const t = T[lang];
-  const matrix = useMemo(() => generateHistory(procParams), [procParams, runs]);
+  // matrix jest stabilna — zależy tylko od procParams, NIE od runs
+  // dzięki temu plan (P50/P80) nie zmienia się między uruchomieniami
+  const matrix = useMemo(() => generateHistory(procParams), [procParams]);
 
   const [results, setResults] = useState(() => {
     const m = generateHistory(DEFAULT_PROC_PARAMS);
@@ -551,16 +635,15 @@ export default function ORSimV4() {
     const validPlan = slots.filter(s => s.proc !== null);
     if (validPlan.length === 0) return;
     setRuns(r => r + 1);
-    const freshMatrix = generateHistory(procParams);
-    setResults(simulate(validPlan, procParams, freshMatrix, planMode, customOffsets));
+    // matrix (plan) jest stabilna — tylko simulate losuje nową realizację
+    setResults(simulate(validPlan, procParams, matrix, planMode, customOffsets));
     setActiveTab("gantt");
-  }, [slots, procParams, planMode, customOffsets]);
+  }, [slots, procParams, matrix, planMode, customOffsets]);
 
   const handleModeChange = (mode) => {
     setPlanMode(mode);
-    const freshMatrix = generateHistory(procParams);
     const validPlan = slots.filter(s => s.proc !== null);
-    setResults(simulate(validPlan, procParams, freshMatrix, mode, customOffsets));
+    setResults(simulate(validPlan, procParams, matrix, mode, customOffsets));
   };
 
   const handleRandomize = () => {
@@ -589,8 +672,7 @@ export default function ORSimV4() {
   const procBias = Object.keys(DEFAULT_PROC_PARAMS).map(p => {
     const ops = results.filter(r => r.proc === p);
     const avg = ops.length ? ops.reduce((a,r)=>a+r.delay,0)/ops.length : 0;
-    const label = lang === "en" ? (PROC_NAMES_EN[p] ?? p) : p.replace("Naprawa przepukliny","Przepuklina");
-    return { proc: label, bias: Math.round(avg*10)/10 };
+    return { proc: p.replace("Hernia Repair","Hernia"), bias: Math.round(avg*10)/10 };
   });
   const matrixRows = Object.entries(matrix).flatMap(([proc, surgs]) =>
     Object.entries(surgs).map(([surg, { p50, p80, mean }]) => ({
@@ -610,7 +692,7 @@ export default function ORSimV4() {
     custom: { color:"#a78bfa", ...t.planning.modes.custom },
   };
 
-  const procLabel = (proc) => lang === "en" ? (PROC_NAMES_EN[proc] ?? proc) : proc;
+  const procLabel = (proc) => proc;
 
   return (
     <div style={{ minHeight:"100vh", background:"#0a0a0f", color:"#ddd",
@@ -665,6 +747,11 @@ export default function ORSimV4() {
             borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700,
             cursor:"pointer", fontFamily:"'Syne',sans-serif",
           }}>{t.help}</button>
+          <button onClick={runSim} style={{
+            background:"linear-gradient(135deg,#e07b39,#c45e1a)", color:"#fff",
+            border:"none", borderRadius:8, padding:"10px 24px", fontSize:13,
+            fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif",
+          }}>{t.runBtn}</button>
         </div>
       </div>
 
@@ -746,7 +833,9 @@ export default function ORSimV4() {
           <ScheduleBuilder
             slots={slots} setSlots={setSlots}
             opsCount={opsCount} setOpsCount={setOpsCount}
-            onRun={runSim} t={t.schedule} procLabel={procLabel}
+            onRun={runSim} t={t.schedule}
+            matrix={matrix} planMode={planMode}
+            customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color}
           />
         </div>
       )}
