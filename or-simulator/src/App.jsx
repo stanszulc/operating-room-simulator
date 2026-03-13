@@ -5,6 +5,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 const START = 8 * 60, END = 16 * 60, PREP = 15, SIM_HISTORY = 200;
 const SURGEON_COLORS = { A: "#e07b39", B: "#4a9eff", C: "#a78bfa" };
 const PROC_COLORS = { Appendektomia: "#e07b39", Cholecystektomia: "#4a9eff", "Naprawa przepukliny": "#a78bfa" };
+const SURGEONS = ["A", "B", "C"];
+const PROCS = ["Appendektomia", "Cholecystektomia", "Naprawa przepukliny"];
 
 const DEFAULT_PROC_PARAMS = {
   Appendektomia:         { mu: 4.06, sigma: 0.28 },
@@ -12,14 +14,6 @@ const DEFAULT_PROC_PARAMS = {
   "Naprawa przepukliny": { mu: 3.91, sigma: 0.26 },
 };
 const SURGEON_SKILL = { A: 0.92, B: 1.10, C: 1.00 };
-const DEFAULT_PLAN = [
-  { chir: "A", proc: "Appendektomia" },
-  { chir: "B", proc: "Cholecystektomia" },
-  { chir: "C", proc: "Appendektomia" },
-  { chir: "A", proc: "Naprawa przepukliny" },
-  { chir: "B", proc: "Appendektomia" },
-  { chir: "C", proc: "Cholecystektomia" },
-];
 
 // ── i18n ──────────────────────────────────────────────────────────────────
 const PROC_NAMES_EN = {
@@ -30,12 +24,12 @@ const PROC_NAMES_EN = {
 
 const T = {
   pl: {
-    subtitle: "OR · Symulator Sali — v3",
+    subtitle: "OR · Symulator Sali — v4",
     title: "Błąd planowania & rozkład log-normalny",
     planMode: "Tryb planu",
     run: "run",
     help: "? Instrukcja",
-    runBtn: "▶ Uruchom",
+    runBtn: "▶ Uruchom symulację",
     kpi: {
       sumDelay: "Suma opóźnień",
       totalDelay: "Przekroczenia (suma)",
@@ -47,11 +41,24 @@ const T = {
       overruns: "Op. z przekroczeniem",
     },
     tabs: {
-      gantt: "Gantt",
-      planning: "Parametry planowania",
-      bias: "Błąd planowania",
-      matrix: "Macierz P50/P80 (Monte Carlo)",
-      params: "Rozkłady czasów realizacji",
+      schedule: "1. Plan dnia",
+      planning: "2. Parametry planowania",
+      params:   "3. Rozkłady",
+      gantt:    "4. Gantt (wyniki)",
+      bias:     "5. Błąd planowania",
+      matrix:   "6. Macierz P50/P80",
+    },
+    schedule: {
+      title: "Zbuduj plan operacyjny",
+      opsCount: "Liczba operacji",
+      randomize: "🎲 Losuj plan",
+      pool: "Przeciągnij procedurę na listę →",
+      slotSurgeon: "Chirurg",
+      slotProc: "Procedura",
+      remove: "✕",
+      emptySlot: "Upuść procedurę tutaj",
+      runBtn: "▶ Uruchom symulację →",
+      hint: "Przeciągnij kafelek procedury z lewej strony i upuść na wybrany slot. Możesz też przypisać chirurga.",
     },
     gantt: {
       planLabel: "Plan —",
@@ -97,21 +104,21 @@ const T = {
       title: "Symulator Sali Operacyjnej",
       close: "Kliknij gdziekolwiek poza oknem aby zamknąć",
       steps: [
-        { title: "Rozkłady czasów realizacji", body: "Ustaw parametry rozkładu log-normalnego per procedura. Suwak μ (mu) przesuwa krzywą — zmienia typowy czas operacji. Suwak σ (sigma) zmienia szerokość krzywej — im większy, tym więcej niespodzianek. Na wykresie widoczne są trzy linie: czerwona = średnia (zawyżona), pomarańczowa = P50 (typowy), zielona = P80 (bezpieczny)." },
-        { title: "Parametry planowania", body: "Wybierz tryb wyznaczania planu: Średnia — błędne podejście, zawyżona przez długie operacje. P50 (mediana) — typowy czas, połowa operacji przekroczy plan. P80 — bezpieczniejszy, tylko 20% operacji przekroczy plan. Własny — ręczna korekta per procedura suwakiem offsetu." },
-        { title: "Uruchom symulację", body: "Kliknij ▶ Uruchom — symulator wylosuje rzeczywiste czasy z rozkładu log-normalnego i porówna je z planem. Każde uruchomienie daje inny wynik." },
-        { title: "Gantt — odczytaj wyniki", body: "Kolorowa ramka = plan (aktywny tryb). Pełny pasek = rzeczywistość. Czerwone obramowanie = przekroczenie planu o ponad 10 minut. Tabela pokazuje plan, start/koniec planu, czas rzeczywisty i Δ (różnicę)." },
-        { title: "KPI", body: "Suma opóźnień — łączna różnica plan vs rzeczywistość. Przekroczenia (suma) — suma tylko operacji dłuższych niż plan. Efektywność sali — operacje + przygotowania / dostępny czas. Wykorzystanie sali — tylko czas operacji / dostępny czas. Koniec ostatniej op. — czerwony = nadgodziny." },
+        { title: "1. Plan dnia", body: "Ustaw liczbę operacji suwakiem (3–10). Przeciągnij procedury z lewej strony na sloty lub kliknij 'Losuj plan'. Każdemu slotowi przypisz chirurga." },
+        { title: "2. Parametry planowania", body: "Wybierz tryb: Średnia — błędne podejście. P50 — typowy czas. P80 — bezpieczny bufor. Własny — ręczna korekta." },
+        { title: "3. Rozkłady", body: "Suwaki μ i σ zmieniają kształt rozkładu log-normalnego per procedura." },
+        { title: "4. Uruchom symulację", body: "Kliknij ▶ Uruchom — symulator losuje rzeczywiste czasy i porównuje z planem." },
+        { title: "5. Gantt i analiza", body: "Kolorowa ramka = plan. Pełny pasek = rzeczywistość. Czerwone obramowanie = przekroczenie > 10 min." },
       ],
     },
   },
   en: {
-    subtitle: "OR · Operating Room Simulator — v3",
+    subtitle: "OR · Operating Room Simulator — v4",
     title: "Planning Bias & Log-Normal Distribution",
     planMode: "Plan mode",
     run: "run",
     help: "? Help",
-    runBtn: "▶ Run",
+    runBtn: "▶ Run simulation",
     kpi: {
       sumDelay: "Total delay",
       totalDelay: "Overruns (sum)",
@@ -123,11 +130,24 @@ const T = {
       overruns: "Ops with overrun",
     },
     tabs: {
-      gantt: "Gantt",
-      planning: "Planning parameters",
-      bias: "Planning bias",
-      matrix: "P50/P80 Matrix (Monte Carlo)",
-      params: "Procedure time distributions",
+      schedule: "1. Schedule",
+      planning: "2. Planning params",
+      params:   "3. Distributions",
+      gantt:    "4. Gantt (results)",
+      bias:     "5. Planning bias",
+      matrix:   "6. P50/P80 Matrix",
+    },
+    schedule: {
+      title: "Build the operating schedule",
+      opsCount: "Number of operations",
+      randomize: "🎲 Randomize",
+      pool: "Drag a procedure to the list →",
+      slotSurgeon: "Surgeon",
+      slotProc: "Procedure",
+      remove: "✕",
+      emptySlot: "Drop procedure here",
+      runBtn: "▶ Run simulation →",
+      hint: "Drag a procedure tile from the left and drop it onto a slot. Then assign a surgeon.",
     },
     gantt: {
       planLabel: "Plan —",
@@ -173,11 +193,11 @@ const T = {
       title: "Operating Room Simulator",
       close: "Click anywhere outside to close",
       steps: [
-        { title: "Procedure time distributions", body: "Set log-normal distribution parameters per procedure. The μ (mu) slider shifts the curve — changes the typical operation time. The σ (sigma) slider changes the curve width — the larger it is, the more variability. Three reference lines are shown: red = mean (inflated), orange = P50 (typical), green = P80 (safe)." },
-        { title: "Planning parameters", body: "Choose the planning mode: Mean — incorrect approach, inflated by long operations. P50 (median) — typical time, half of operations will exceed the plan. P80 — safer, only 20% of operations will exceed the plan. Custom — manual offset per procedure." },
-        { title: "Run simulation", body: "Click ▶ Run — the simulator draws actual times from a log-normal distribution and compares them to the plan. Each run gives a different result." },
-        { title: "Gantt — read results", body: "Colored outline = plan (active mode). Solid bar = actual time. Red outline = plan exceeded by more than 10 minutes. The table shows plan, plan start/end, actual time and Δ (difference)." },
-        { title: "KPIs", body: "Total delay — sum of plan vs actual differences. Overruns (sum) — sum of only the operations longer than planned. Room efficiency — ops + prep time / available time. Room utilization — ops time only / available time. Last op. end — red = overtime." },
+        { title: "1. Schedule", body: "Set the number of operations (3–10). Drag procedure tiles onto slots or click 'Randomize'. Assign a surgeon to each slot." },
+        { title: "2. Planning parameters", body: "Choose mode: Mean — incorrect. P50 — typical time. P80 — safe buffer. Custom — manual offset." },
+        { title: "3. Distributions", body: "μ and σ sliders change the log-normal distribution shape per procedure." },
+        { title: "4. Run simulation", body: "Click ▶ Run — the simulator draws actual times and compares to the plan." },
+        { title: "5. Gantt & analysis", body: "Colored outline = plan. Solid bar = actual. Red outline = overrun > 10 min." },
       ],
     },
   },
@@ -280,7 +300,7 @@ function minToTime(m) {
 const DAY_W = END - START + 60;
 function px(min, width) { return ((min - START) / DAY_W) * width; }
 
-function GanttRow3({ row, width, planColor }) {
+function GanttRow({ row, width, planColor }) {
   const color = SURGEON_COLORS[row.chir];
   const pL = px(row.startPlan, width), pW = Math.max((row.planned / DAY_W) * width, 3);
   const rL = px(row.startReal, width), rW = Math.max((row.actual / DAY_W) * width, 3);
@@ -342,34 +362,210 @@ function ModeBtn({ mode, active, onClick, label, desc, color }) {
   );
 }
 
+// ── Schedule Builder ──────────────────────────────────────────────────────
+function buildRandomPlan(n) {
+  return Array.from({ length: n }, () => ({
+    proc: PROCS[Math.floor(Math.random() * PROCS.length)],
+    chir: SURGEONS[Math.floor(Math.random() * SURGEONS.length)],
+  }));
+}
+
+function buildEmptySlots(n) {
+  return Array.from({ length: n }, () => ({ proc: null, chir: "A" }));
+}
+
+function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, procLabel }) {
+  const [dragProc, setDragProc] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
+
+  const handleDragStart = (proc) => setDragProc(proc);
+  const handleDragEnd   = () => { setDragProc(null); setDragOverIdx(null); };
+
+  const handleDrop = (idx) => {
+    if (!dragProc) return;
+    setSlots(prev => prev.map((s, i) => i === idx ? { ...s, proc: dragProc } : s));
+    setDragProc(null);
+    setDragOverIdx(null);
+  };
+
+  // reorder slots by dragging slots themselves
+  const [dragSlotIdx, setDragSlotIdx] = useState(null);
+
+  const handleSlotDragStart = (idx) => setDragSlotIdx(idx);
+  const handleSlotDrop = (idx) => {
+    if (dragSlotIdx === null || dragSlotIdx === idx) return;
+    setSlots(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(dragSlotIdx, 1);
+      next.splice(idx, 0, moved);
+      return next;
+    });
+    setDragSlotIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const readyCount = slots.filter(s => s.proc !== null).length;
+  const allReady = readyCount === slots.length;
+
+  return (
+    <div style={{ display:"grid", gridTemplateColumns:"200px 1fr", gap:16 }}>
+      {/* left: procedure pool */}
+      <div>
+        <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+          marginBottom:10, fontFamily:"'JetBrains Mono',monospace" }}>{t.pool}</div>
+        {PROCS.map(proc => {
+          const color = PROC_COLORS[proc];
+          return (
+            <div key={proc}
+              draggable
+              onDragStart={() => handleDragStart(proc)}
+              onDragEnd={handleDragEnd}
+              style={{
+                background:`${color}18`, border:`1px solid ${color}55`,
+                borderRadius:8, padding:"10px 12px", marginBottom:8,
+                cursor:"grab", userSelect:"none",
+                fontSize:12, fontWeight:600, color,
+                transition:"transform 0.1s",
+                transform: dragProc === proc ? "scale(0.97)" : "scale(1)",
+              }}>
+              {procLabel(proc)}
+            </div>
+          );
+        })}
+        <div style={{ marginTop:16, fontSize:10, color:"#444", lineHeight:1.6,
+          fontFamily:"'JetBrains Mono',monospace" }}>{t.hint}</div>
+      </div>
+
+      {/* right: slots */}
+      <div>
+        {/* ops count slider */}
+        <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
+          <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.opsCount}:</span>
+          <input type="range" min={3} max={10} step={1} value={opsCount}
+            onChange={e => {
+              const n = parseInt(e.target.value);
+              setOpsCount(n);
+              setSlots(prev => {
+                if (n > prev.length) return [...prev, ...buildEmptySlots(n - prev.length)];
+                return prev.slice(0, n);
+              });
+            }}
+            style={{ flex:1, accentColor:"#e07b39", cursor:"pointer" }} />
+          <span style={{ fontSize:16, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace",
+            minWidth:20, textAlign:"center" }}>{opsCount}</span>
+        </div>
+
+        {/* slot list */}
+        <div style={{ display:"grid", gap:6 }}>
+          {slots.map((slot, idx) => {
+            const color = slot.proc ? PROC_COLORS[slot.proc] : "#333";
+            const isOver = dragOverIdx === idx;
+            return (
+              <div key={idx}
+                onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
+                onDragLeave={() => setDragOverIdx(null)}
+                onDrop={() => {
+                  if (dragSlotIdx !== null) handleSlotDrop(idx);
+                  else handleDrop(idx);
+                }}
+                draggable={slot.proc !== null}
+                onDragStart={() => handleSlotDragStart(idx)}
+                onDragEnd={() => { setDragSlotIdx(null); setDragOverIdx(null); }}
+                style={{
+                  display:"grid", gridTemplateColumns:"28px 1fr 110px 32px",
+                  alignItems:"center", gap:8,
+                  background: isOver ? "#1a1a2a" : "#111118",
+                  border:`1px solid ${isOver ? "#e07b39" : (slot.proc ? color+"44" : "#1e1e2a")}`,
+                  borderRadius:8, padding:"8px 10px",
+                  transition:"border-color 0.15s, background 0.15s",
+                  cursor: slot.proc ? "grab" : "default",
+                }}>
+                {/* number */}
+                <span style={{ fontSize:11, color:"#444", fontFamily:"'JetBrains Mono',monospace",
+                  textAlign:"center" }}>{idx + 1}</span>
+                {/* proc name or empty */}
+                {slot.proc ? (
+                  <span style={{ fontSize:12, fontWeight:600, color }}>{procLabel(slot.proc)}</span>
+                ) : (
+                  <span style={{ fontSize:11, color:"#333", fontStyle:"italic" }}>{t.emptySlot}</span>
+                )}
+                {/* surgeon dropdown */}
+                <select value={slot.chir}
+                  onChange={e => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, chir: e.target.value } : s))}
+                  style={{
+                    background:"#0d0d14", border:"1px solid #252530", borderRadius:6,
+                    color: SURGEON_COLORS[slot.chir], padding:"4px 8px", fontSize:12,
+                    fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif",
+                  }}>
+                  {SURGEONS.map(s => <option key={s} value={s} style={{ color: SURGEON_COLORS[s] }}>{t.slotSurgeon} {s}</option>)}
+                </select>
+                {/* remove button */}
+                <button onClick={() => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, proc: null } : s))}
+                  style={{ background:"transparent", border:"none", color:"#333", cursor:"pointer",
+                    fontSize:14, padding:0, lineHeight:1 }}>{t.remove}</button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* run button */}
+        <button onClick={onRun} disabled={!allReady}
+          style={{
+            marginTop:16, width:"100%", padding:"12px",
+            background: allReady ? "linear-gradient(135deg,#e07b39,#c45e1a)" : "#1a1a24",
+            color: allReady ? "#fff" : "#444",
+            border:"none", borderRadius:8, fontSize:13, fontWeight:700,
+            cursor: allReady ? "pointer" : "not-allowed",
+            fontFamily:"'Syne',sans-serif", transition:"all 0.2s",
+          }}>
+          {allReady ? t.runBtn : `${readyCount}/${slots.length} procedur przypisanych`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── main ──────────────────────────────────────────────────────────────────
-export default function ORSimV3() {
+export default function ORSimV4() {
   const [procParams, setProcParams] = useState(DEFAULT_PROC_PARAMS);
   const [planMode, setPlanMode] = useState("mean");
   const [customOffsets, setCustomOffsets] = useState({ Appendektomia:0, Cholecystektomia:0, "Naprawa przepukliny":0 });
   const [runs, setRuns] = useState(0);
-  const [activeTab, setActiveTab] = useState("gantt");
+  const [activeTab, setActiveTab] = useState("schedule");
   const [showHelp, setShowHelp] = useState(false);
   const [lang, setLang] = useState("pl");
 
-  const t = T[lang];
+  // schedule state
+  const [opsCount, setOpsCount] = useState(6);
+  const [slots, setSlots] = useState(() => buildRandomPlan(6));
 
+  const t = T[lang];
   const matrix = useMemo(() => generateHistory(procParams), [procParams, runs]);
 
   const [results, setResults] = useState(() => {
     const m = generateHistory(DEFAULT_PROC_PARAMS);
-    return simulate(DEFAULT_PLAN, DEFAULT_PROC_PARAMS, m, "mean", {});
+    return simulate(buildRandomPlan(6), DEFAULT_PROC_PARAMS, m, "mean", {});
   });
 
   const runSim = useCallback(() => {
+    const validPlan = slots.filter(s => s.proc !== null);
+    if (validPlan.length === 0) return;
     setRuns(r => r + 1);
-    setResults(simulate(DEFAULT_PLAN, procParams, matrix, planMode, customOffsets));
-  }, [procParams, matrix, planMode, customOffsets]);
+    const freshMatrix = generateHistory(procParams);
+    setResults(simulate(validPlan, procParams, freshMatrix, planMode, customOffsets));
+    setActiveTab("gantt");
+  }, [slots, procParams, planMode, customOffsets]);
 
   const handleModeChange = (mode) => {
     setPlanMode(mode);
     const freshMatrix = generateHistory(procParams);
-    setResults(simulate(DEFAULT_PLAN, procParams, freshMatrix, mode, customOffsets));
+    const validPlan = slots.filter(s => s.proc !== null);
+    setResults(simulate(validPlan, procParams, freshMatrix, mode, customOffsets));
+  };
+
+  const handleRandomize = () => {
+    const plan = buildRandomPlan(opsCount);
+    setSlots(plan);
   };
 
   const setParam = (proc, key, val) =>
@@ -423,6 +619,7 @@ export default function ORSimV3() {
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box}
         input[type=range]{height:4px;border-radius:2px}
+        select{outline:none}
         .card{background:#111118;border:1px solid #1e1e2a;border-radius:10px;padding:18px 20px}
         .tab{padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;
           letter-spacing:0.04em;transition:all 0.15s;border:none;font-family:'Syne',sans-serif}
@@ -453,7 +650,6 @@ export default function ORSimV3() {
           </div>
         </div>
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-          {/* lang switcher */}
           <div style={{ display:"flex", borderRadius:8, overflow:"hidden", border:"1px solid #252530" }}>
             {["pl","en"].map(l => (
               <button key={l} onClick={() => setLang(l)} style={{
@@ -469,11 +665,6 @@ export default function ORSimV3() {
             borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700,
             cursor:"pointer", fontFamily:"'Syne',sans-serif",
           }}>{t.help}</button>
-          <button onClick={runSim} style={{
-            background:"linear-gradient(135deg,#e07b39,#c45e1a)", color:"#fff",
-            border:"none", borderRadius:8, padding:"10px 24px", fontSize:13,
-            fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif",
-          }}>{t.runBtn}</button>
         </div>
       </div>
 
@@ -540,66 +731,23 @@ export default function ORSimV3() {
         ))}
       </div>
 
-      {/* ── GANTT tab ── */}
-      {activeTab === "gantt" && (
+      {/* ── SCHEDULE tab ── */}
+      {activeTab === "schedule" && (
         <div className="card">
-          <div style={{ display:"flex", gap:20, marginBottom:14, flexWrap:"wrap", fontSize:11 }}>
-            <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
-              <span style={{ border:`2px solid ${MODE_CONFIG[planMode].color}`, width:18, height:10, borderRadius:2, display:"inline-block" }} />
-              {t.gantt.planLabel} <strong style={{ color: MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</strong>
-            </span>
-            <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
-              <span style={{ background:"#aaa", width:18, height:10, borderRadius:2, display:"inline-block" }} />
-              {t.gantt.actual}
-            </span>
-            {["A","B","C"].map(s => (
-              <span key={s} style={{ display:"flex", alignItems:"center", gap:5, color:"#666" }}>
-                <span style={{ background:SURGEON_COLORS[s], width:10, height:10, borderRadius:2, display:"inline-block" }} />
-                {t.gantt.surgeon} {s}
-              </span>
-            ))}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+              fontFamily:"'JetBrains Mono',monospace" }}>{t.schedule.title}</div>
+            <button onClick={handleRandomize} style={{
+              background:"#1a1a28", border:"1px solid #252530", color:"#aaa",
+              borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600,
+              cursor:"pointer", fontFamily:"'Syne',sans-serif",
+            }}>{t.schedule.randomize}</button>
           </div>
-          <div style={{ overflowX:"auto" }}>
-            <div style={{ minWidth:640 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"120px 1fr" }}>
-                <div /><TimeAxis width={580} />
-              </div>
-              {results.map(row => (
-                <div key={row.id} style={{ display:"grid", gridTemplateColumns:"120px 1fr", alignItems:"center" }}>
-                  <div style={{ fontSize:10, color:"#666", fontFamily:"'JetBrains Mono',monospace", paddingRight:8 }}>
-                    Op {row.id} · <span style={{ color:SURGEON_COLORS[row.chir] }}>{row.chir}</span>
-                    <br /><span style={{ color:"#444", fontSize:9 }}>{procLabel(row.proc)}</span>
-                  </div>
-                  <GanttRow3 row={row} width={580} planColor={MODE_CONFIG[planMode].color} />
-                </div>
-              ))}
-            </div>
-          </div>
-          <table style={{ width:"100%", borderCollapse:"collapse", marginTop:16 }}>
-            <thead><tr>
-              {t.gantt.tableHeaders.map(h=><th key={h}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {results.map(r => (
-                <tr key={r.id}>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.id}</td>
-                  <td><span style={{ color:SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
-                  <td style={{ color:"#666", fontSize:11 }}>{procLabel(r.proc)}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", color: MODE_CONFIG[planMode].color, fontWeight:600 }}>{r.planned}'</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.startPlan)}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.endPlan)}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.actual}'</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
-                    color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>
-                    {r.delay>0?"+":""}{r.delay}'
-                  </td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#666" }}>{minToTime(r.startReal)}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
-                    color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ScheduleBuilder
+            slots={slots} setSlots={setSlots}
+            opsCount={opsCount} setOpsCount={setOpsCount}
+            onRun={runSim} t={t.schedule} procLabel={procLabel}
+          />
         </div>
       )}
 
@@ -681,7 +829,7 @@ export default function ORSimV3() {
                   {planMode === "custom" && (
                     <div style={{ marginTop:12, padding:"10px 12px", background:"#0d0d14", borderRadius:6 }}>
                       <Slider label={t.planning.offsetLabel} value={offset} min={-20} max={30} step={5}
-                        onChange={v => { setOffset(proc, v); setResults(simulate(DEFAULT_PLAN, procParams, matrix, "custom", {...customOffsets, [proc]:v})); }}
+                        onChange={v => { setOffset(proc, v); const fm = generateHistory(procParams); const vp = slots.filter(s=>s.proc!==null); setResults(simulate(vp, procParams, fm, "custom", {...customOffsets, [proc]:v})); }}
                         color={color} />
                       <div style={{ fontSize:10, color:"#555", marginTop:2 }}>
                         {t.planning.offsetBase} ({p50}') + {offset} = <span style={{ color, fontWeight:600 }}>{p50 + offset}'</span>
@@ -721,6 +869,135 @@ export default function ORSimV3() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── PARAMS tab ── */}
+      {activeTab === "params" && (
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
+          {Object.entries(procParams).map(([proc, { mu, sigma }]) => {
+            const color = PROC_COLORS[proc];
+            const previewMedian = Math.round(Math.exp(mu));
+            const previewP80 = Math.round(Math.exp(mu + 0.842 * sigma));
+            const { curve } = buildPDFCurve(mu, sigma);
+            const meanVal = Math.round(lognormMean(mu, sigma));
+            return (
+              <div key={proc} className="card" style={{ borderTop:`2px solid ${color}` }}>
+                <div style={{ fontSize:13, fontWeight:600, color, marginBottom:4 }}>{procLabel(proc)}</div>
+                <div style={{ fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", marginBottom:14 }}>
+                  P50 ≈ {previewMedian}' · śr ≈ {meanVal}' · P80 ≈ {previewP80}'
+                </div>
+                <Slider label="μ (log-scale mean)" value={mu} min={3.5} max={5.0} step={0.01}
+                  onChange={v => setParam(proc, "mu", v)} color={color} />
+                <Slider label="σ (log-scale std)" value={sigma} min={0.10} max={0.60} step={0.01}
+                  onChange={v => setParam(proc, "sigma", v)} color={color} />
+                <div style={{ marginTop:14 }}>
+                  <div style={{ fontSize:10, color:"#333", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {t.params.distLabel}
+                  </div>
+                  <ResponsiveContainer width="100%" height={110}>
+                    <AreaChart data={curve} margin={{ top:8, right:4, bottom:0, left:-28 }}>
+                      <defs>
+                        <linearGradient id={`grad-${proc.replace(/\s/g,"")}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor={color} stopOpacity={0.35} />
+                          <stop offset="95%" stopColor={color} stopOpacity={0.03} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a26" vertical={false} />
+                      <XAxis dataKey="x" tick={{ fontSize:9, fill:"#555" }} tickFormatter={v=>`${v}'`} interval="preserveStartEnd" />
+                      <YAxis hide />
+                      <ReferenceLine x={meanVal} stroke="#ff6b6b" strokeWidth={2} strokeDasharray="3 2"
+                        label={{ value:`śr=${meanVal}'`, position:"top", fill:"#ff6b6b", fontSize:8 }} />
+                      <ReferenceLine x={previewMedian} stroke="#e07b39" strokeWidth={2} strokeDasharray="5 2"
+                        label={{ value:`P50=${previewMedian}'`, position:"top", fill:"#e07b39", fontSize:8 }} />
+                      <ReferenceLine x={previewP80} stroke="#6bcb77" strokeWidth={1} strokeDasharray="2 3"
+                        label={{ value:`P80=${previewP80}'`, position:"top", fill:"#6bcb77", fontSize:8 }} />
+                      <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }}
+                        formatter={(v,n,p)=>[`${p.payload.x} min`,""]} labelFormatter={()=>""} />
+                      <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2}
+                        fill={`url(#grad-${proc.replace(/\s/g,"")})`} dot={false} activeDot={{ r:3, fill:color }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ marginTop:10, background:"#0d0d14", borderRadius:6, padding:"10px 12px" }}>
+                  {["A","B","C"].map(s => {
+                    const cell = matrix[proc]?.[s];
+                    return (
+                      <div key={s} style={{ display:"flex", justifyContent:"space-between", marginBottom:3, fontSize:11 }}>
+                        <span style={{ color:SURGEON_COLORS[s], fontWeight:600 }}>{t.params.surgeon} {s}</span>
+                        <span style={{ fontFamily:"'JetBrains Mono',monospace", color:"#888" }}>
+                          śr {cell?.mean}' · P50 {cell?.p50}' · P80 {cell?.p80}'
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── GANTT tab ── */}
+      {activeTab === "gantt" && (
+        <div className="card">
+          <div style={{ display:"flex", gap:20, marginBottom:14, flexWrap:"wrap", fontSize:11 }}>
+            <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
+              <span style={{ border:`2px solid ${MODE_CONFIG[planMode].color}`, width:18, height:10, borderRadius:2, display:"inline-block" }} />
+              {t.gantt.planLabel} <strong style={{ color: MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</strong>
+            </span>
+            <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
+              <span style={{ background:"#aaa", width:18, height:10, borderRadius:2, display:"inline-block" }} />
+              {t.gantt.actual}
+            </span>
+            {["A","B","C"].map(s => (
+              <span key={s} style={{ display:"flex", alignItems:"center", gap:5, color:"#666" }}>
+                <span style={{ background:SURGEON_COLORS[s], width:10, height:10, borderRadius:2, display:"inline-block" }} />
+                {t.gantt.surgeon} {s}
+              </span>
+            ))}
+          </div>
+          <div style={{ overflowX:"auto" }}>
+            <div style={{ minWidth:640 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"120px 1fr" }}>
+                <div /><TimeAxis width={580} />
+              </div>
+              {results.map(row => (
+                <div key={row.id} style={{ display:"grid", gridTemplateColumns:"120px 1fr", alignItems:"center" }}>
+                  <div style={{ fontSize:10, color:"#666", fontFamily:"'JetBrains Mono',monospace", paddingRight:8 }}>
+                    Op {row.id} · <span style={{ color:SURGEON_COLORS[row.chir] }}>{row.chir}</span>
+                    <br /><span style={{ color:"#444", fontSize:9 }}>{procLabel(row.proc)}</span>
+                  </div>
+                  <GanttRow row={row} width={580} planColor={MODE_CONFIG[planMode].color} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <table style={{ width:"100%", borderCollapse:"collapse", marginTop:16 }}>
+            <thead><tr>
+              {t.gantt.tableHeaders.map(h=><th key={h}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {results.map(r => (
+                <tr key={r.id}>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.id}</td>
+                  <td><span style={{ color:SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
+                  <td style={{ color:"#666", fontSize:11 }}>{procLabel(r.proc)}</td>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace", color: MODE_CONFIG[planMode].color, fontWeight:600 }}>{r.planned}'</td>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.startPlan)}</td>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.endPlan)}</td>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.actual}'</td>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
+                    color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>
+                    {r.delay>0?"+":""}{r.delay}'
+                  </td>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#666" }}>{minToTime(r.startReal)}</td>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
+                    color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -807,72 +1084,6 @@ export default function ORSimV3() {
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {/* ── PARAMS tab ── */}
-      {activeTab === "params" && (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
-          {Object.entries(procParams).map(([proc, { mu, sigma }]) => {
-            const color = PROC_COLORS[proc];
-            const previewMedian = Math.round(Math.exp(mu));
-            const previewP80 = Math.round(Math.exp(mu + 0.842 * sigma));
-            const { curve } = buildPDFCurve(mu, sigma);
-            const meanVal = Math.round(lognormMean(mu, sigma));
-            return (
-              <div key={proc} className="card" style={{ borderTop:`2px solid ${color}` }}>
-                <div style={{ fontSize:13, fontWeight:600, color, marginBottom:4 }}>{procLabel(proc)}</div>
-                <div style={{ fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", marginBottom:14 }}>
-                  P50 ≈ {previewMedian}' · śr ≈ {meanVal}' · P80 ≈ {previewP80}'
-                </div>
-                <Slider label="μ (log-scale mean)" value={mu} min={3.5} max={5.0} step={0.01}
-                  onChange={v => setParam(proc, "mu", v)} color={color} />
-                <Slider label="σ (log-scale std)" value={sigma} min={0.10} max={0.60} step={0.01}
-                  onChange={v => setParam(proc, "sigma", v)} color={color} />
-                <div style={{ marginTop:14 }}>
-                  <div style={{ fontSize:10, color:"#333", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, fontFamily:"'JetBrains Mono',monospace" }}>
-                    {t.params.distLabel}
-                  </div>
-                  <ResponsiveContainer width="100%" height={110}>
-                    <AreaChart data={curve} margin={{ top:8, right:4, bottom:0, left:-28 }}>
-                      <defs>
-                        <linearGradient id={`grad-${proc.replace(/\s/g,"")}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor={color} stopOpacity={0.35} />
-                          <stop offset="95%" stopColor={color} stopOpacity={0.03} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a26" vertical={false} />
-                      <XAxis dataKey="x" tick={{ fontSize:9, fill:"#555" }} tickFormatter={v=>`${v}'`} interval="preserveStartEnd" />
-                      <YAxis hide />
-                      <ReferenceLine x={meanVal} stroke="#ff6b6b" strokeWidth={2} strokeDasharray="3 2"
-                        label={{ value:`śr=${meanVal}'`, position:"top", fill:"#ff6b6b", fontSize:8 }} />
-                      <ReferenceLine x={previewMedian} stroke="#e07b39" strokeWidth={2} strokeDasharray="5 2"
-                        label={{ value:`P50=${previewMedian}'`, position:"top", fill:"#e07b39", fontSize:8 }} />
-                      <ReferenceLine x={previewP80} stroke="#6bcb77" strokeWidth={1} strokeDasharray="2 3"
-                        label={{ value:`P80=${previewP80}'`, position:"top", fill:"#6bcb77", fontSize:8 }} />
-                      <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }}
-                        formatter={(v,n,p)=>[`${p.payload.x} min`,""]} labelFormatter={()=>""} />
-                      <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2}
-                        fill={`url(#grad-${proc.replace(/\s/g,"")})`} dot={false} activeDot={{ r:3, fill:color }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                <div style={{ marginTop:10, background:"#0d0d14", borderRadius:6, padding:"10px 12px" }}>
-                  {["A","B","C"].map(s => {
-                    const cell = matrix[proc]?.[s];
-                    return (
-                      <div key={s} style={{ display:"flex", justifyContent:"space-between", marginBottom:3, fontSize:11 }}>
-                        <span style={{ color:SURGEON_COLORS[s], fontWeight:600 }}>{t.params.surgeon} {s}</span>
-                        <span style={{ fontFamily:"'JetBrains Mono',monospace", color:"#888" }}>
-                          śr {cell?.mean}' · P50 {cell?.p50}' · P80 {cell?.p80}'
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
         </div>
       )}
     </div>
