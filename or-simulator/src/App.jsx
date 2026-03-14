@@ -892,6 +892,7 @@ export default function ORSimV5() {
       const results = {};
       for (const mode of modes) {
         const endTimes = [], delays = [], overtimeDays = [], carryDays = [];
+        const overtimeMins = [], carryOvers = [];
         for (let i = 0; i < mcIterations; i++) {
           const sim = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
           const allR = sim.flatMap(d => d.rows);
@@ -899,10 +900,14 @@ export default function ORSimV5() {
           const totalD = allR.reduce((a, r) => a + Math.max(0, r.delay), 0);
           const hasOT = sim.some(d => d.lastEnd > END);
           const hasCO = sim.some(d => d.carryOverCount > 0);
+          const totalCO = sim.reduce((a, d) => a + d.carryOverCount, 0);
+          const totalOTMin = sim.reduce((a, d) => a + Math.max(0, d.lastEnd - END), 0);
           endTimes.push(lastE);
           delays.push(totalD);
           overtimeDays.push(hasOT ? 1 : 0);
           carryDays.push(hasCO ? 1 : 0);
+          overtimeMins.push(totalOTMin);
+          carryOvers.push(totalCO);
         }
         endTimes.sort((a, b) => a - b);
         delays.sort((a, b) => a - b);
@@ -912,7 +917,10 @@ export default function ORSimV5() {
           avgDelay: Math.round(delays.reduce((a,b)=>a+b,0) / mcIterations),
           p80Delay: delays[Math.floor(mcIterations * 0.8)],
           avgEnd: Math.round(endTimes.reduce((a,b)=>a+b,0) / mcIterations),
-          endTimes, // for histogram
+          avgOvertimeMin: Math.round(overtimeMins.reduce((a,b)=>a+b,0) / mcIterations),
+          avgCarryOver: Math.round(carryOvers.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
+          worstEnd: Math.max(...endTimes),
+          endTimes,
         };
       }
       setMcResults(results);
@@ -1499,26 +1507,35 @@ export default function ORSimV5() {
                     {t.monte.summaryTitle} · {mcIterations} {t.monte.iterations}
                   </div>
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                    <thead><tr>{t.monte.headers.map(h=><th key={h}>{h}</th>)}</tr></thead>
+                    <thead><tr>
+                      {(lang==="pl"
+                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","Najgorszy dzień"]
+                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","Worst day"]
+                      ).map(h=><th key={h}>{h}</th>)}
+                    </tr></thead>
                     <tbody>
                       {modeKeys.map(mode => {
                         const r = mcResults[mode];
                         const color = COLORS[mode];
+                        const pctOnTime = 100 - r.overtimeRate;
                         return (
                           <tr key={mode}>
-                            <td><span style={{ color, fontWeight:700, fontSize:13 }}>
-                              {t.monte.modes[mode]}
-                            </span></td>
+                            <td><span style={{ color, fontWeight:700, fontSize:13 }}>{t.monte.modes[mode]}</span></td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
+                              color: pctOnTime>=80?"#6bcb77":pctOnTime>=50?"#e0c039":"#ff6b6b" }}>
+                              {pctOnTime}%
+                            </td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: r.overtimeRate > 50 ? "#ff6b6b" : r.overtimeRate > 20 ? "#e0c039" : "#6bcb77",
-                              fontWeight:600 }}>{r.overtimeRate}%</td>
+                              color: r.avgOvertimeMin>30?"#ff6b6b":r.avgOvertimeMin>0?"#ff9f43":"#6bcb77" }}>
+                              {r.avgOvertimeMin}'
+                            </td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: r.carryOverRate > 30 ? "#ff2244" : r.carryOverRate > 10 ? "#ff9f43" : "#6bcb77",
-                              fontWeight:600 }}>{r.carryOverRate}%</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#888" }}>{r.avgDelay}'</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43" }}>{r.p80Delay}'</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: r.avgEnd > END ? "#ff6b6b" : "#6bcb77" }}>{minToTime(r.avgEnd)}</td>
+                              color: r.avgCarryOver>1?"#ff2244":r.avgCarryOver>0?"#ff9f43":"#6bcb77" }}>
+                              {r.avgCarryOver.toFixed(1)}
+                            </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>
+                              {minToTime(r.worstEnd)}
+                            </td>
                           </tr>
                         );
                       })}
@@ -1526,40 +1543,82 @@ export default function ORSimV5() {
                   </table>
                 </div>
 
-                {/* histogram */}
-                <div className="card">
-                  <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-                    marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-                    {t.monte.histTitle}
-                  </div>
-                  {/* legend */}
-                  <div style={{ display:"flex", gap:16, marginBottom:12, flexWrap:"wrap" }}>
-                    {modeKeys.map(mode => (
-                      <span key={mode} style={{ display:"flex", alignItems:"center", gap:6, fontSize:11 }}>
-                        <span style={{ background:COLORS[mode], width:12, height:12, borderRadius:2, display:"inline-block" }} />
-                        <span style={{ color:COLORS[mode], fontWeight:600 }}>{t.monte.modes[mode]}</span>
-                      </span>
-                    ))}
-                    <span style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:"#ff6b6b" }}>
-                      <span style={{ borderLeft:"2px dashed #ff6b6b", height:12, display:"inline-block" }} />
-                      {lang==="pl" ? "16:00 koniec dnia" : "16:00 end of day"}
-                    </span>
-                  </div>
-                  <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={histData} margin={{ top:4, right:4, bottom:20, left:-10 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
-                      <XAxis dataKey="time" tick={{ fontSize:9, fill:"#555" }} interval={3}
-                        label={{ value: lang==="pl"?"Godzina końca":"End time", position:"insideBottom", offset:-12, fill:"#444", fontSize:10 }} />
-                      <YAxis tick={{ fontSize:9, fill:"#555" }}
-                        label={{ value: lang==="pl"?"Liczba iteracji":"Count", angle:-90, position:"insideLeft", fill:"#444", fontSize:10 }} />
-                      <ReferenceLine x={minToTime(END)} stroke="#ff6b6b" strokeDasharray="4 2" strokeWidth={2} />
-                      <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:11 }}
-                        formatter={(v, name) => [v, t.monte.modes[name] ?? name]} />
-                      {modeKeys.map(mode => (
-                        <Bar key={mode} dataKey={mode} fill={COLORS[mode]} opacity={0.75} radius={[2,2,0,0]} />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
+                {/* 4 individual histograms */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12 }}>
+                  {modeKeys.map(mode => {
+                    const color = COLORS[mode];
+                    const r = mcResults[mode];
+
+                    // build per-mode histogram bins
+                    const modeBins = {};
+                    for (let m = START; m <= END + 120; m += 15) {
+                      modeBins[m] = { time: minToTime(m), count: 0 };
+                    }
+                    r.endTimes.forEach(et => {
+                      const bucket = Math.floor(et / 15) * 15;
+                      if (!modeBins[bucket]) modeBins[bucket] = { time: minToTime(bucket), count: 0 };
+                      modeBins[bucket].count += 1;
+                    });
+                    const modeHistData = Object.values(modeBins).filter(b => b.count > 0);
+                    const onTime = r.endTimes.filter(e => e <= END).length;
+                    const pctOnTime = Math.round(onTime / mcIterations * 100);
+
+                    return (
+                      <div key={mode} className="card" style={{ borderTop:`2px solid ${color}` }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
+                          <span style={{ fontSize:13, fontWeight:700, color }}>{t.monte.modes[mode]}</span>
+                          <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
+                            color: pctOnTime >= 80 ? "#6bcb77" : pctOnTime >= 50 ? "#e0c039" : "#ff6b6b" }}>
+                            {pctOnTime}% {lang==="pl" ? "na czas" : "on time"}
+                          </span>
+                        </div>
+                        <ResponsiveContainer width="100%" height={160}>
+                          <BarChart data={modeHistData} margin={{ top:4, right:4, bottom:16, left:-15 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
+                            <XAxis dataKey="time" tick={{ fontSize:8, fill:"#555" }} interval={2}
+                              label={{ value: lang==="pl"?"Koniec":"End", position:"insideBottom", offset:-8, fill:"#444", fontSize:9 }} />
+                            <YAxis tick={{ fontSize:8, fill:"#555" }} />
+                            <ReferenceLine x={minToTime(END)} stroke="#ff6b6b" strokeDasharray="3 2" strokeWidth={1.5} />
+                            <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }}
+                              formatter={v => [v, lang==="pl" ? "iteracji" : "iterations"]} />
+                            <Bar dataKey="count" fill={color} opacity={0.8} radius={[2,2,0,0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginTop:8 }}>
+                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
+                            <div style={{ fontSize:16, fontWeight:600, color,
+                              fontFamily:"'JetBrains Mono',monospace" }}>{minToTime(r.avgEnd)}</div>
+                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                              {lang==="pl" ? "śr. koniec" : "avg end"}
+                            </div>
+                          </div>
+                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
+                            <div style={{ fontSize:16, fontWeight:600,
+                              color: r.avgOvertimeMin > 0 ? "#ff9f43" : "#6bcb77",
+                              fontFamily:"'JetBrains Mono',monospace" }}>{r.avgOvertimeMin}'</div>
+                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                              {lang==="pl" ? "śr. nadgodziny" : "avg overtime"}
+                            </div>
+                          </div>
+                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
+                            <div style={{ fontSize:16, fontWeight:600,
+                              color: r.avgCarryOver > 0 ? "#ff2244" : "#6bcb77",
+                              fontFamily:"'JetBrains Mono',monospace" }}>{r.avgCarryOver.toFixed(1)}</div>
+                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                              {lang==="pl" ? "śr. carry-over/dzień" : "avg carry-over/day"}
+                            </div>
+                          </div>
+                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
+                            <div style={{ fontSize:16, fontWeight:600, color:"#ff6b6b",
+                              fontFamily:"'JetBrains Mono',monospace" }}>{minToTime(r.worstEnd)}</div>
+                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                              {lang==="pl" ? "najgorszy dzień" : "worst day"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             );
