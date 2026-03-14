@@ -56,6 +56,9 @@ const T = {
       emptySlot: "Upuść tutaj",
       runBtn: "▶ Uruchom symulację →",
       hint: "Przeciągnij kafelek z lewej na slot. Przypisz chirurga.",
+      disruptions: "Zakłócenia",
+      enableDelay: "Opóźnienie startu pierwszej operacji",
+      enableSor: "Nieplanowany przypadek z SOR",
     },
     gantt: {
       planLabel: "Plan —",
@@ -97,6 +100,16 @@ const T = {
     params: {
       distLabel: "Rozkład — czerwona = średnia, pomarańcz. = P50",
       surgeon: "Chirurg",
+      disruptTitle: "Parametry zakłóceń",
+      delayTitle: "Opóźnienie startu",
+      delayOnTime: "Prawdopodobieństwo startu na czas",
+      delayMean: "Średnie opóźnienie gdy wystąpi (min)",
+      sorTitle: "Przypadek z SOR",
+      sorLambda: "Średnia liczba przypadków / dzień (λ)",
+      sorDuration: "Średni czas operacji pilnej (min)",
+      sorPriority: "Priorytet SOR",
+      sorPriorityOptions: ["Wyprzedza planowe", "Na koniec dnia"],
+      disruptOff: "Zakłócenia wyłączone — włącz w zakładce 1",
     },
     helpModal: {
       label: "Instrukcja obsługi",
@@ -151,6 +164,9 @@ const T = {
       emptySlot: "Drop here",
       runBtn: "▶ Run simulation →",
       hint: "Drag a tile from the left onto a slot. Assign a surgeon.",
+      disruptions: "Disruptions",
+      enableDelay: "First case start delay",
+      enableSor: "Unplanned emergency (SOR)",
     },
     gantt: {
       planLabel: "Plan —",
@@ -192,6 +208,16 @@ const T = {
     params: {
       distLabel: "Distribution — red = mean, orange = P50",
       surgeon: "Surgeon",
+      disruptTitle: "Disruption parameters",
+      delayTitle: "Start delay",
+      delayOnTime: "Probability of on-time start",
+      delayMean: "Mean delay when it occurs (min)",
+      sorTitle: "Emergency case (SOR)",
+      sorLambda: "Mean cases per day (λ)",
+      sorDuration: "Mean emergency op duration (min)",
+      sorPriority: "SOR priority",
+      sorPriorityOptions: ["Preempts scheduled ops", "Added at end of day"],
+      disruptOff: "Disruptions disabled — enable in tab 1",
     },
     helpModal: {
       label: "User guide",
@@ -268,13 +294,28 @@ function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
 
+// ── Disruption helpers ────────────────────────────────────────────────────
+function samplePoisson(lambda) {
+  // Knuth algorithm
+  const L = Math.exp(-lambda);
+  let k = 0, p = 1;
+  do { k++; p *= Math.random(); } while (p > L);
+  return k - 1;
+}
+
+function sampleStartDelay(onTimeProbability, meanDelay) {
+  if (Math.random() < onTimeProbability) return 0;
+  // exponential distribution: -meanDelay * ln(U)
+  return Math.round(-meanDelay * Math.log(Math.max(Math.random(), 1e-10)));
+}
+
 // ── Multi-day simulation ──────────────────────────────────────────────────
-// Returns array of days. Each day: { dayIdx, rows[], carryOverCount }
-// carry-over ops from previous day are prepended with isCarryOver=true
-function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit) {
+function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit, disruptions = {}) {
+  const { enableDelay=false, delayOnTime=0.7, delayMean=20,
+          enableSor=false, sorLambda=1, sorDuration=60, sorPriority="end" } = disruptions;
   const HARD_END = END + overtimeLimit;
   let carryQueue = [];
-  let globalPlanId = 0; // continuous LP counter
+  let globalPlanId = 0;
 
   const days = [];
 
@@ -287,13 +328,48 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
     ];
     carryQueue = [];
 
-    let tReal = START;
+    // ── start delay disruption ──
+    const startDelay = enableDelay ? sampleStartDelay(delayOnTime, delayMean) : 0;
+
+    // ── SOR cases for this day ──
+    const sorCases = [];
+    if (enableSor) {
+      const nSor = samplePoisson(sorLambda);
+      for (let s = 0; s < nSor; s++) {
+        const arrivalMin = START + Math.floor(Math.random() * (END - START));
+        const duration = Math.max(20, Math.round(-sorDuration * Math.log(Math.max(Math.random(), 1e-10))));
+        sorCases.push({ arrivalMin, duration });
+      }
+      sorCases.sort((a, b) => a.arrivalMin - b.arrivalMin);
+    }
+
+    let tReal = START + startDelay;
     let tPlan = START;
     const rows = [];
-    let overflowed = false; // once true, all remaining ops go to carryQueue
+    let overflowed = false;
+    let sorQueue = [...sorCases]; // SOR cases not yet inserted
 
     for (let i = 0; i < todayPlan.length; i++) {
       const op = todayPlan[i];
+
+      // ── insert SOR preempt cases that arrive before this op starts ──
+      if (sorPriority === "preempt") {
+        while (sorQueue.length > 0 && sorQueue[0].arrivalMin <= tReal) {
+          const sor = sorQueue.shift();
+          if (!overflowed && tReal + sor.duration <= HARD_END) {
+            rows.push({
+              id: rows.length + 1, planId: "SOR", dayIdx: d,
+              chir: "SOR", proc: "Emergency (SOR)", isCarryOver: false, isSor: true,
+              startPlan: tReal, endPlan: tReal + sor.duration,
+              startReal: tReal, endReal: tReal + sor.duration,
+              planned: sor.duration, actual: sor.duration, delay: 0,
+            });
+            tReal = tReal + sor.duration + PREP;
+            tPlan = tReal;
+          }
+        }
+      }
+
       const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
       const skill = SURGEON_SKILL[op.chir] ?? 1;
       const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
@@ -302,7 +378,6 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
       const startReal = Math.max(tReal, START);
       const endReal = startReal + actual;
 
-      // if already overflowed or this op would end after hard limit → carry over
       if (overflowed || endReal > HARD_END) {
         overflowed = true;
         carryQueue.push({ proc: op.proc, chir: op.chir, planId: op.planId });
@@ -319,6 +394,8 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
         chir: op.chir,
         proc: op.proc,
         isCarryOver: op.isCarryOver,
+        isSor: false,
+        startDelay: i === 0 ? startDelay : 0,
         startPlan, endPlan,
         startReal, endReal,
         planned, actual,
@@ -329,11 +406,29 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
       tPlan = endPlan + PREP;
     }
 
+    // ── append SOR cases at end of day if priority = "end" ──
+    if (sorPriority === "end") {
+      for (const sor of sorQueue.length > 0 ? sorCases : []) {
+        if (!overflowed && tReal + sor.duration <= HARD_END) {
+          rows.push({
+            id: rows.length + 1, planId: "SOR", dayIdx: d,
+            chir: "SOR", proc: "Emergency (SOR)", isCarryOver: false, isSor: true,
+            startPlan: tReal, endPlan: tReal + sor.duration,
+            startReal: tReal, endReal: tReal + sor.duration,
+            planned: sor.duration, actual: sor.duration, delay: 0,
+          });
+          tReal = tReal + sor.duration + PREP;
+        }
+      }
+    }
+
     days.push({
       dayIdx: d,
       rows,
       carryOverCount: carryQueue.length,
       lastEnd: rows.at(-1)?.endReal ?? START,
+      startDelay,
+      sorCount: sorCases.length,
     });
   }
 
@@ -350,21 +445,25 @@ const DAY_W = END - START + 60;
 function px(min, width) { return ((min - START) / DAY_W) * width; }
 
 function GanttRow({ row, width, planColor }) {
-  const color = row.isCarryOver ? "#ff2244" : SURGEON_COLORS[row.chir];
+  const isSor = row.isSor;
+  const color = isSor ? "#ff2244" : row.isCarryOver ? "#ff2244" : SURGEON_COLORS[row.chir];
   const pL = px(row.startPlan, width), pW = Math.max((row.planned / DAY_W) * width, 3);
   const rL = px(row.startReal, width), rW = Math.max((row.actual / DAY_W) * width, 3);
   return (
     <div style={{ position:"relative", height:32, marginBottom:4 }}>
-      <div title={`Plan #${row.planId ?? "—"} · Plan (${row.planned} min): ${minToTime(row.startPlan)}–${minToTime(row.endPlan)}`} style={{
-        position:"absolute", left:pL, width:pW, height:13, top:1,
-        border:`2px solid ${row.isCarryOver ? "#ff2244" : planColor}`,
-        borderRadius:3, opacity:0.8,
-      }} />
-      <div title={`Plan #${row.planId ?? "—"} · Actual: ${minToTime(row.startReal)}–${minToTime(row.endReal)} (${row.actual} min)${row.isCarryOver ? " · CARRY-OVER" : ""}`} style={{
-        position:"absolute", left:rL, width:rW, height:13, top:17,
-        background: row.isCarryOver ? "#ff2244" : color,
+      {!isSor && (
+        <div title={`Plan #${row.planId ?? "—"} · Plan (${row.planned} min): ${minToTime(row.startPlan)}–${minToTime(row.endPlan)}`} style={{
+          position:"absolute", left:pL, width:pW, height:13, top:1,
+          border:`2px solid ${row.isCarryOver ? "#ff2244" : planColor}`,
+          borderRadius:3, opacity:0.8,
+        }} />
+      )}
+      <div title={`${isSor ? "🚨 SOR Emergency" : `Plan #${row.planId ?? "—"}`} · ${minToTime(row.startReal)}–${minToTime(row.endReal)} (${row.actual} min)${row.isCarryOver ? " · CARRY-OVER" : ""}${row.startDelay > 0 ? ` · Start delay: ${row.startDelay}'` : ""}`} style={{
+        position:"absolute", left:rL, width:rW, height: isSor ? 28 : 13, top: isSor ? 2 : 17,
+        background: isSor ? "#ff224488" : color,
+        border: isSor ? "2px dashed #ff2244" : "none",
         borderRadius:3, opacity: row.isCarryOver ? 1 : 0.9,
-        ...(row.delay > 10 ? { outline:"2px solid #ff4d4d", outlineOffset:1 } : {}),
+        ...(row.delay > 10 && !isSor ? { outline:"2px solid #ff4d4d", outlineOffset:1 } : {}),
       }} />
     </div>
   );
@@ -548,7 +647,9 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, mat
               onChange={e => {
                 const n = parseInt(e.target.value);
                 setOpsCount(n);
-                setSlots(prev => n > prev.length ? [...prev, ...buildEmptySlots(n-prev.length)] : prev.slice(0,n));
+                setSlots(prev => n > prev.length
+                  ? [...prev, ...buildRandomPlan(n - prev.length)]
+                  : prev.slice(0, n));
               }}
               style={{ flex:1, accentColor:"#e07b39", cursor:"pointer" }} />
             <span style={{ fontSize:16, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace", minWidth:20, textAlign:"center" }}>{opsCount}</span>
@@ -600,18 +701,30 @@ function MultiDayGantt({ days, planColor, t }) {
   const W = 560;
   return (
     <div>
-      {days.map(({ dayIdx, rows, lastEnd }) => {
+      {days.map(({ dayIdx, rows, lastEnd, startDelay, sorCount }) => {
         const overtime = lastEnd > END;
         const carryOvers = rows.filter(r => r.isCarryOver).length;
         return (
           <div key={dayIdx} style={{ marginBottom:20 }}>
             {/* day header */}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:"#e07b39", fontFamily:"'Syne',sans-serif", letterSpacing:"0.05em" }}>
-                {t.day} {dayIdx + 1}
+              <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+                <span style={{ fontSize:11, fontWeight:700, color:"#e07b39", fontFamily:"'Syne',sans-serif", letterSpacing:"0.05em" }}>
+                  {t.day} {dayIdx + 1}
+                </span>
                 {carryOvers > 0 && (
-                  <span style={{ marginLeft:8, fontSize:10, color:"#ff2244", fontFamily:"'JetBrains Mono',monospace", background:"#ff224422", padding:"2px 7px", borderRadius:4 }}>
+                  <span style={{ fontSize:10, color:"#ff2244", fontFamily:"'JetBrains Mono',monospace", background:"#ff224422", padding:"2px 7px", borderRadius:4 }}>
                     {t.carryOver}: {carryOvers}
+                  </span>
+                )}
+                {startDelay > 0 && (
+                  <span style={{ fontSize:10, color:"#ff9f43", fontFamily:"'JetBrains Mono',monospace", background:"#ff9f4322", padding:"2px 7px", borderRadius:4 }}>
+                    ⏱ +{startDelay}'
+                  </span>
+                )}
+                {sorCount > 0 && (
+                  <span style={{ fontSize:10, color:"#ff2244", fontFamily:"'JetBrains Mono',monospace", background:"#ff224422", padding:"2px 7px", borderRadius:4 }}>
+                    🚨 SOR ×{sorCount}
                   </span>
                 )}
               </div>
@@ -631,10 +744,12 @@ function MultiDayGantt({ days, planColor, t }) {
                   {rows.map(row => (
                     <div key={row.id} style={{ display:"grid", gridTemplateColumns:"120px 1fr", alignItems:"center" }}>
                       <div style={{ fontSize:10, fontFamily:"'JetBrains Mono',monospace", paddingRight:8,
-                        color: row.isCarryOver ? "#ff2244" : "#666" }}>
-                        {row.isCarryOver && <span style={{ fontSize:9, color:"#ff2244" }}>↩ </span>}
-                        <span style={{ color:"#555" }}>#{row.planId ?? "—"} </span>
-                        Op {row.id} · <span style={{ color: row.isCarryOver ? "#ff2244" : SURGEON_COLORS[row.chir] }}>{row.chir}</span>
+                        color: row.isSor ? "#ff2244" : row.isCarryOver ? "#ff2244" : "#666" }}>
+                        {row.isSor && <span style={{ fontSize:9, color:"#ff2244" }}>🚨 </span>}
+                        {row.isCarryOver && !row.isSor && <span style={{ fontSize:9, color:"#ff2244" }}>↩ </span>}
+                        {row.startDelay > 0 && <span style={{ fontSize:9, color:"#ff9f43" }}>⏱ </span>}
+                        <span style={{ color: row.isSor ? "#ff2244" : "#555" }}>#{row.planId ?? "—"} </span>
+                        Op {row.id} · <span style={{ color: row.isSor ? "#ff2244" : row.isCarryOver ? "#ff2244" : SURGEON_COLORS[row.chir] }}>{row.chir}</span>
                         <br /><span style={{ color:"#444", fontSize:9 }}>{row.proc}</span>
                       </div>
                       <GanttRow row={row} width={W} planColor={planColor} />
@@ -660,7 +775,16 @@ export default function ORSimV5() {
   const [showHelp, setShowHelp] = useState(false);
   const [lang, setLang] = useState("pl");
   const [numDays, setNumDays] = useState(3);
-  const [overtimeLimit, setOvertimeLimit] = useState(60); // minutes
+  const [overtimeLimit, setOvertimeLimit] = useState(60);
+
+  // disruption state
+  const [enableDelay, setEnableDelay] = useState(false);
+  const [delayOnTime, setDelayOnTime] = useState(0.7);   // 70% on time
+  const [delayMean, setDelayMean]     = useState(20);    // 20 min avg delay
+  const [enableSor, setEnableSor]     = useState(false);
+  const [sorLambda, setSorLambda]     = useState(1);     // 1 case/day avg
+  const [sorDuration, setSorDuration] = useState(60);    // 60 min avg
+  const [sorPriority, setSorPriority] = useState("end"); // "preempt" | "end"
 
   const [opsCount, setOpsCount] = useState(6);
   const [slots, setSlots] = useState(() => buildRandomPlan(6));
@@ -674,18 +798,20 @@ export default function ORSimV5() {
   }, []);
   const [days, setDays] = useState(initDays);
 
+  const disruptions = { enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority };
+
   const runSim = useCallback(() => {
     const validPlan = slots.filter(s => s.proc !== null);
     if (validPlan.length === 0) return;
     setRuns(r => r + 1);
-    setDays(simulateMultiDay(validPlan, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit));
+    setDays(simulateMultiDay(validPlan, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit, disruptions));
     setActiveTab("gantt");
-  }, [slots, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit]);
+  }, [slots, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit, enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority]);
 
   const handleModeChange = (mode) => {
     setPlanMode(mode);
     const validPlan = slots.filter(s => s.proc !== null);
-    setDays(simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit));
+    setDays(simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions));
   };
 
   const handleRandomize = () => setSlots(buildRandomPlan(opsCount));
@@ -849,6 +975,50 @@ export default function ORSimV5() {
           <ScheduleBuilder slots={slots} setSlots={setSlots} opsCount={opsCount} setOpsCount={setOpsCount}
             onRun={runSim} t={t.schedule} matrix={matrix} planMode={planMode}
             customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color} numDays={numDays} />
+
+          {/* disruption toggles */}
+          <div style={{ marginTop:16, borderTop:"1px solid #1e1e2a", paddingTop:16 }}>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+              fontFamily:"'JetBrains Mono',monospace", marginBottom:12 }}>
+              ⚡ {t.schedule.disruptions}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+              {[
+                { key:"delay", enabled:enableDelay, setter:setEnableDelay, label:t.schedule.enableDelay, color:"#ff9f43" },
+                { key:"sor",   enabled:enableSor,   setter:setEnableSor,   label:t.schedule.enableSor,   color:"#ff2244" },
+              ].map(({ key, enabled, setter, label, color }) => (
+                <div key={key} onClick={() => setter(v => !v)} style={{
+                  display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
+                  background: enabled ? `${color}14` : "#111118",
+                  border:`1px solid ${enabled ? color+"66" : "#1e1e2a"}`,
+                  borderRadius:8, cursor:"pointer", transition:"all 0.15s",
+                }}>
+                  <div style={{
+                    width:18, height:18, borderRadius:4, flexShrink:0,
+                    background: enabled ? color : "transparent",
+                    border:`2px solid ${enabled ? color : "#333"}`,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                  }}>
+                    {enabled && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
+                  </div>
+                  <span style={{ fontSize:12, color: enabled ? color : "#555", fontWeight: enabled ? 600 : 400 }}>
+                    {label}
+                  </span>
+                  {enabled && (
+                    <span style={{ marginLeft:"auto", fontSize:10, color:`${color}99`,
+                      fontFamily:"'JetBrains Mono',monospace" }}>
+                      {key === "delay" ? `P=${Math.round(delayOnTime*100)}% · ${delayMean}'` : `λ=${sorLambda} · ${sorDuration}'`}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {(enableDelay || enableSor) && (
+              <div style={{ marginTop:8, fontSize:10, color:"#555", fontFamily:"'JetBrains Mono',monospace" }}>
+                ↳ {lang === "pl" ? "Ustaw parametry w zakładce 3" : "Configure parameters in tab 3"}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1000,6 +1170,71 @@ export default function ORSimV5() {
         </div>
       )}
 
+      {/* disruption params — shown below distributions when active */}
+      {activeTab === "params" && (
+        <div style={{ marginTop:14 }}>
+          {(!enableDelay && !enableSor) ? (
+            <div className="card" style={{ textAlign:"center", color:"#333", fontSize:12,
+              fontFamily:"'JetBrains Mono',monospace", padding:"14px" }}>
+              {t.params.disruptOff}
+            </div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns: enableDelay && enableSor ? "1fr 1fr" : "1fr", gap:12 }}>
+              {enableDelay && (
+                <div className="card" style={{ borderTop:"2px solid #ff9f43" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#ff9f43", marginBottom:14 }}>
+                    ⏱ {t.params.delayTitle}
+                  </div>
+                  <Slider label={t.params.delayOnTime} value={delayOnTime} min={0} max={1} step={0.05}
+                    onChange={setDelayOnTime} color="#ff9f43" />
+                  <div style={{ fontSize:10, color:"#555", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {lang==="pl" ? `Opóźnienie wystąpi w ${Math.round((1-delayOnTime)*100)}% dni` : `Delay occurs in ${Math.round((1-delayOnTime)*100)}% of days`}
+                  </div>
+                  <Slider label={t.params.delayMean} value={delayMean} min={5} max={60} step={5}
+                    onChange={setDelayMean} color="#ff9f43" />
+                  <div style={{ marginTop:10, background:"#0d0d14", borderRadius:6, padding:"8px 12px",
+                    fontSize:11, color:"#888", fontFamily:"'JetBrains Mono',monospace" }}>
+                    {lang==="pl"
+                      ? `Typowe opóźnienie: 0–${Math.round(delayMean*2)}'`
+                      : `Typical delay range: 0–${Math.round(delayMean*2)}'`}
+                  </div>
+                </div>
+              )}
+              {enableSor && (
+                <div className="card" style={{ borderTop:"2px solid #ff2244" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#ff2244", marginBottom:14 }}>
+                    🚨 {t.params.sorTitle}
+                  </div>
+                  <Slider label={t.params.sorLambda} value={sorLambda} min={0.5} max={3} step={0.5}
+                    onChange={setSorLambda} color="#ff2244" />
+                  <div style={{ fontSize:10, color:"#555", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {lang==="pl"
+                      ? `Oczekiwana liczba przypadków/dzień: ${sorLambda}`
+                      : `Expected cases/day: ${sorLambda}`}
+                  </div>
+                  <Slider label={t.params.sorDuration} value={sorDuration} min={20} max={120} step={10}
+                    onChange={setSorDuration} color="#ff2244" />
+                  <div style={{ marginTop:10 }}>
+                    <div style={{ fontSize:10, color:"#555", marginBottom:6 }}>{t.params.sorPriority}</div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      {["preempt","end"].map((p, i) => (
+                        <button key={p} onClick={() => setSorPriority(p)} style={{
+                          flex:1, padding:"7px 10px", borderRadius:6, cursor:"pointer", fontSize:11,
+                          border:`1px solid ${sorPriority===p ? "#ff2244" : "#252530"}`,
+                          background: sorPriority===p ? "#ff224420" : "#0d0d14",
+                          color: sorPriority===p ? "#ff2244" : "#555",
+                          fontFamily:"'Syne',sans-serif", fontWeight:600,
+                        }}>{t.params.sorPriorityOptions[i]}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── GANTT tab ── */}
       {activeTab === "gantt" && (
         <div className="card">
@@ -1016,6 +1251,17 @@ export default function ORSimV5() {
               <span style={{ background:"#ff2244", width:18, height:10, borderRadius:2, display:"inline-block" }} />
               {t.gantt.carryOver}
             </span>
+            {enableSor && (
+              <span style={{ display:"flex", alignItems:"center", gap:6, color:"#ff2244" }}>
+                <span style={{ background:"#ff224488", border:"2px dashed #ff2244", width:18, height:10, borderRadius:2, display:"inline-block" }} />
+                🚨 SOR
+              </span>
+            )}
+            {enableDelay && (
+              <span style={{ display:"flex", alignItems:"center", gap:6, color:"#ff9f43" }}>
+                ⏱ {lang === "pl" ? "Opóźnienie startu" : "Start delay"}
+              </span>
+            )}
             {["A","B","C"].map(s => (
               <span key={s} style={{ display:"flex", alignItems:"center", gap:5, color:"#666" }}>
                 <span style={{ background:SURGEON_COLORS[s], width:10, height:10, borderRadius:2, display:"inline-block" }} />
