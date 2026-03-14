@@ -889,7 +889,7 @@ export default function ORSimV5() {
       const results = {};
       for (const mode of modes) {
         const endTimes = [], delays = [], overtimeDays = [], carryDays = [];
-        const overtimeMins = [], carryOvers = [];
+        const overtimeMins = [], carryOvers = [], efficiencies = [], utilizations = [];
         for (let i = 0; i < mcIterations; i++) {
           const sim = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
           const allR = sim.flatMap(d => d.rows);
@@ -899,12 +899,18 @@ export default function ORSimV5() {
           const hasCO = sim.some(d => d.carryOverCount > 0);
           const totalCO = sim.reduce((a, d) => a + d.carryOverCount, 0);
           const totalOTMin = sim.reduce((a, d) => a + Math.max(0, d.lastEnd - END), 0);
+          const eff = allR.length
+            ? ((allR.reduce((a,r)=>a+r.actual,0) + PREP*(allR.length-1)) / ((END-START)*numDays)) * 100 : 0;
+          const util = allR.length
+            ? (allR.reduce((a,r)=>a+r.actual,0) / ((END-START)*numDays)) * 100 : 0;
           endTimes.push(lastE);
           delays.push(totalD);
           overtimeDays.push(hasOT ? 1 : 0);
           carryDays.push(hasCO ? 1 : 0);
           overtimeMins.push(totalOTMin);
           carryOvers.push(totalCO);
+          efficiencies.push(eff);
+          utilizations.push(util);
         }
         endTimes.sort((a, b) => a - b);
         delays.sort((a, b) => a - b);
@@ -917,6 +923,8 @@ export default function ORSimV5() {
           avgOvertimeMin: Math.round(overtimeMins.reduce((a,b)=>a+b,0) / mcIterations),
           avgCarryOver: Math.round(carryOvers.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
           worstEnd: Math.max(...endTimes),
+          avgEfficiency: Math.round(efficiencies.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
+          avgUtilization: Math.round(utilizations.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
           endTimes,
         };
       }
@@ -1506,8 +1514,8 @@ export default function ORSimV5() {
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead><tr>
                       {(lang==="pl"
-                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","Najgorszy dzień"]
-                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","Worst day"]
+                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","Efektywność sali","Wykorzystanie sali","Najgorszy dzień"]
+                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","Room efficiency","Room utilization","Worst day"]
                       ).map(h=><th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
@@ -1529,6 +1537,14 @@ export default function ORSimV5() {
                             <td style={{ fontFamily:"'JetBrains Mono',monospace",
                               color: r.avgCarryOver>1?"#ff2244":r.avgCarryOver>0?"#ff9f43":"#6bcb77" }}>
                               {r.avgCarryOver.toFixed(1)}
+                            </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: r.avgEfficiency>=85?"#6bcb77":r.avgEfficiency>=70?"#e0c039":"#ff6b6b" }}>
+                              {r.avgEfficiency}%
+                            </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: r.avgUtilization>=75?"#6bcb77":r.avgUtilization>=60?"#e0c039":"#ff6b6b" }}>
+                              {r.avgUtilization}%
                             </td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>
                               {minToTime(r.worstEnd)}
