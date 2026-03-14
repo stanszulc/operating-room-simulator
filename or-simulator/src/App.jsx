@@ -9,31 +9,34 @@ const SURGEONS = ["A", "B", "C"];
 const PROCS = ["Appendectomy", "Cholecystectomy", "Hernia Repair"];
 
 const DEFAULT_PROC_PARAMS = {
-  Appendectomy:   { mu: 4.06, sigma: 0.28 },
-  Cholecystectomy:{ mu: 4.28, sigma: 0.32 },
-  "Hernia Repair":{ mu: 3.91, sigma: 0.26 },
+  Appendectomy:    { mu: 4.06, sigma: 0.28 },
+  Cholecystectomy: { mu: 4.28, sigma: 0.32 },
+  "Hernia Repair": { mu: 3.91, sigma: 0.26 },
 };
 const SURGEON_SKILL = { A: 0.92, B: 1.10, C: 1.00 };
 
 // ── i18n ──────────────────────────────────────────────────────────────────
-
 const T = {
   pl: {
-    subtitle: "OR · Symulator Sali — v4",
+    subtitle: "OR · Symulator Sali — v5",
     title: "Symulacja Sali Operacyjnej",
     planMode: "Tryb planu",
     run: "run",
     help: "? Instrukcja",
     runBtn: "▶ Uruchom symulację",
+    daysLabel: "Liczba dni",
+    overtimeLabel: "Limit nadgodzin",
     kpi: {
       sumDelay: "Suma opóźnień",
       totalDelay: "Przekroczenia (suma)",
       efficiency: "Efektywność sali",
       efficiencyTip: "op. + przygotowania / czas dostępny",
-      utilization: "Wykorzystanie sali (op.)",
+      utilization: "Wykorzystanie sali",
       utilizationTip: "tylko czas operacji / czas dostępny",
       lastEnd: "Koniec ostatniej op.",
       overruns: "Op. z przekroczeniem",
+      carryOver: "Carry-over (Day+1)",
+      carryOverTip: "operacje przeniesione na następny dzień",
     },
     tabs: {
       schedule: "1. Plan dnia",
@@ -45,21 +48,22 @@ const T = {
     },
     schedule: {
       title: "Zbuduj plan operacyjny",
-      opsCount: "Liczba operacji",
+      opsCount: "Liczba operacji / dzień",
       randomize: "🎲 Losuj plan",
-      pool: "Przeciągnij procedurę na listę →",
-      slotSurgeon: "Chirurg",
-      slotProc: "Procedura",
+      pool: "Przeciągnij procedurę →",
+      slotSurgeon: "Chir.",
       remove: "✕",
-      emptySlot: "Upuść procedurę tutaj",
+      emptySlot: "Upuść tutaj",
       runBtn: "▶ Uruchom symulację →",
-      hint: "Przeciągnij kafelek procedury z lewej strony i upuść na wybrany slot. Możesz też przypisać chirurga.",
+      hint: "Przeciągnij kafelek z lewej na slot. Przypisz chirurga.",
     },
     gantt: {
       planLabel: "Plan —",
       actual: "Rzeczywistość",
       surgeon: "Chirurg",
-      tableHeaders: ["Op","Chir","Procedura","Plan","Start (plan)","Koniec (plan)","Rzecz.","Δ","Start","Koniec"],
+      carryOver: "⚠ Carry-over",
+      day: "Dzień",
+      tableHeaders: ["Op","#Plan","Chir","Procedura","Plan","Start","Koniec (plan)","Rzecz.","Δ","Start real","Koniec real","Carry-over"],
     },
     planning: {
       modeTitle: "Tryb wyznaczania planu operacji",
@@ -99,30 +103,34 @@ const T = {
       title: "Symulator Sali Operacyjnej",
       close: "Kliknij gdziekolwiek poza oknem aby zamknąć",
       steps: [
-        { title: "1. Plan dnia", body: "Ustaw liczbę operacji suwakiem (3–10). Przeciągnij procedury z lewej strony na sloty lub kliknij 'Losuj plan'. Każdemu slotowi przypisz chirurga." },
-        { title: "2. Parametry planowania", body: "Wybierz tryb: Średnia — błędne podejście. P50 — typowy czas. P80 — bezpieczny bufor. Własny — ręczna korekta." },
-        { title: "3. Rozkłady", body: "Suwaki μ i σ zmieniają kształt rozkładu log-normalnego per procedura." },
-        { title: "4. Uruchom symulację", body: "Kliknij ▶ Uruchom — symulator losuje rzeczywiste czasy i porównuje z planem." },
-        { title: "5. Gantt i analiza", body: "Kolorowa ramka = plan. Pełny pasek = rzeczywistość. Czerwone obramowanie = przekroczenie > 10 min." },
+        { title: "1. Plan dnia", body: "Ustaw liczbę operacji (3–10) i liczbę dni (1–5). Przeciągnij procedury na sloty lub kliknij 'Losuj plan'. Ustaw limit nadgodzin." },
+        { title: "2. Parametry planowania", body: "Wybierz tryb: Średnia — błędne podejście. P50 — typowy czas. P80 — bezpieczny bufor." },
+        { title: "3. Uruchom symulację", body: "Kliknij ▶ Uruchom. Operacje które przekroczą limit nadgodzin przechodzą na następny dzień (carry-over) — oznaczone czerwonym wypełnieniem." },
+        { title: "4. Gantt wielodniowy", body: "Każdy dzień ma osobną oś czasu. Carry-over widoczny jako jaskrawo czerwony pasek na początku następnego dnia." },
+        { title: "5. KPI", body: "Carry-over (Day+1) — ile operacji zostało przesuniętych na następny dzień łącznie przez cały okres." },
       ],
     },
   },
   en: {
-    subtitle: "OR · Operating Room Simulator — v4",
+    subtitle: "OR · Operating Room Simulator — v5",
     title: "Operating Room Simulator",
     planMode: "Plan mode",
     run: "run",
     help: "? Help",
     runBtn: "▶ Run simulation",
+    daysLabel: "Number of days",
+    overtimeLabel: "Overtime limit",
     kpi: {
       sumDelay: "Total delay",
       totalDelay: "Overruns (sum)",
       efficiency: "Room efficiency",
       efficiencyTip: "ops + prep time / available time",
-      utilization: "Room utilization (ops)",
+      utilization: "Room utilization",
       utilizationTip: "ops time only / available time",
       lastEnd: "Last op. end",
       overruns: "Ops with overrun",
+      carryOver: "Carry-over (Day+1)",
+      carryOverTip: "operations moved to next day",
     },
     tabs: {
       schedule: "1. Schedule",
@@ -134,21 +142,22 @@ const T = {
     },
     schedule: {
       title: "Build the operating schedule",
-      opsCount: "Number of operations",
+      opsCount: "Ops per day",
       randomize: "🎲 Randomize",
-      pool: "Drag a procedure to the list →",
-      slotSurgeon: "Surgeon",
-      slotProc: "Procedure",
+      pool: "Drag a procedure →",
+      slotSurgeon: "Surg.",
       remove: "✕",
-      emptySlot: "Drop procedure here",
+      emptySlot: "Drop here",
       runBtn: "▶ Run simulation →",
-      hint: "Drag a procedure tile from the left and drop it onto a slot. Then assign a surgeon.",
+      hint: "Drag a tile from the left onto a slot. Assign a surgeon.",
     },
     gantt: {
       planLabel: "Plan —",
       actual: "Actual",
       surgeon: "Surgeon",
-      tableHeaders: ["Op","Surg","Procedure","Plan","Start (plan)","End (plan)","Actual","Δ","Start","End"],
+      carryOver: "⚠ Carry-over",
+      day: "Day",
+      tableHeaders: ["Op","#Plan","Surg","Procedure","Plan","Start","End (plan)","Actual","Δ","Start real","End real","Carry-over"],
     },
     planning: {
       modeTitle: "Planning mode",
@@ -188,11 +197,11 @@ const T = {
       title: "Operating Room Simulator",
       close: "Click anywhere outside to close",
       steps: [
-        { title: "1. Schedule", body: "Set the number of operations (3–10). Drag procedure tiles onto slots or click 'Randomize'. Assign a surgeon to each slot." },
-        { title: "2. Planning parameters", body: "Choose mode: Mean — incorrect. P50 — typical time. P80 — safe buffer. Custom — manual offset." },
-        { title: "3. Distributions", body: "μ and σ sliders change the log-normal distribution shape per procedure." },
-        { title: "4. Run simulation", body: "Click ▶ Run — the simulator draws actual times and compares to the plan." },
-        { title: "5. Gantt & analysis", body: "Colored outline = plan. Solid bar = actual. Red outline = overrun > 10 min." },
+        { title: "1. Schedule", body: "Set ops per day (3–10) and number of days (1–5). Drag tiles onto slots or randomize. Set overtime limit." },
+        { title: "2. Planning parameters", body: "Choose mode: Mean — incorrect. P50 — typical. P80 — safe buffer." },
+        { title: "3. Run simulation", body: "Click ▶ Run. Ops exceeding overtime limit carry over to the next day — shown in bright red." },
+        { title: "4. Multi-day Gantt", body: "Each day has its own timeline. Carry-over ops appear as bright red bars at the start of the next day." },
+        { title: "5. KPIs", body: "Carry-over (Day+1) — total ops moved to next day across the whole period." },
       ],
     },
   },
@@ -257,33 +266,76 @@ function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
 
-function simulate(plan, procParams, matrix, planMode, customOffsets) {
-  let tReal = START;
-  let tPlan = START;
-  return plan.map((op, idx) => {
-    const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
-    const skill = SURGEON_SKILL[op.chir] ?? 1;
-    const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
-    const planned     = getPlanned(matrix, op.proc, op.chir, planMode, customOffsets);
-    const plannedMean = getPlanned(matrix, op.proc, op.chir, "mean", {});
-    const plannedP50  = getPlanned(matrix, op.proc, op.chir, "p50", {});
-    const startReal = Math.max(tReal, START);
-    const endReal = startReal + actual;
-    const startPlan = tPlan;
-    const endPlan = startPlan + planned;
-    const row = {
-      id: idx + 1, chir: op.chir, proc: op.proc,
-      startPlan, endPlan,
-      startMean: tPlan, endMean: tPlan + plannedMean,
-      startP50:  tPlan, endP50:  tPlan + plannedP50,
-      startReal, endReal,
-      planned, plannedMean, plannedP50,
-      actual, delay: actual - planned,
-    };
-    tReal = endReal + PREP;
-    tPlan = endPlan + PREP;
-    return row;
-  });
+// ── Multi-day simulation ──────────────────────────────────────────────────
+// Returns array of days. Each day: { dayIdx, rows[], carryOverCount }
+// carry-over ops from previous day are prepended with isCarryOver=true
+function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit) {
+  const HARD_END = END + overtimeLimit;
+  let carryQueue = [];
+  let globalPlanId = 0; // continuous LP counter
+
+  const days = [];
+
+  for (let d = 0; d < numDays; d++) {
+    // fresh plan ops get new continuous IDs each day
+    const freshOps = plan.map((op) => ({ ...op, planId: ++globalPlanId, isCarryOver: false }));
+    const todayPlan = [
+      ...carryQueue.map(op => ({ ...op, isCarryOver: true })),
+      ...freshOps,
+    ];
+    carryQueue = [];
+
+    let tReal = START;
+    let tPlan = START;
+    const rows = [];
+    let overflowed = false; // once true, all remaining ops go to carryQueue
+
+    for (let i = 0; i < todayPlan.length; i++) {
+      const op = todayPlan[i];
+      const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+      const skill = SURGEON_SKILL[op.chir] ?? 1;
+      const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
+      const planned = getPlanned(matrix, op.proc, op.chir, planMode, customOffsets);
+
+      const startReal = Math.max(tReal, START);
+      const endReal = startReal + actual;
+
+      // if already overflowed or this op would end after hard limit → carry over
+      if (overflowed || endReal > HARD_END) {
+        overflowed = true;
+        carryQueue.push({ proc: op.proc, chir: op.chir, planId: op.planId });
+        continue;
+      }
+
+      const startPlan = tPlan;
+      const endPlan = startPlan + planned;
+
+      rows.push({
+        id: rows.length + 1,
+        planId: op.planId,
+        dayIdx: d,
+        chir: op.chir,
+        proc: op.proc,
+        isCarryOver: op.isCarryOver,
+        startPlan, endPlan,
+        startReal, endReal,
+        planned, actual,
+        delay: actual - planned,
+      });
+
+      tReal = endReal + PREP;
+      tPlan = endPlan + PREP;
+    }
+
+    days.push({
+      dayIdx: d,
+      rows,
+      carryOverCount: carryQueue.length,
+      lastEnd: rows.at(-1)?.endReal ?? START,
+    });
+  }
+
+  return days;
 }
 
 function minToTime(m) {
@@ -296,18 +348,20 @@ const DAY_W = END - START + 60;
 function px(min, width) { return ((min - START) / DAY_W) * width; }
 
 function GanttRow({ row, width, planColor }) {
-  const color = SURGEON_COLORS[row.chir];
+  const color = row.isCarryOver ? "#ff2244" : SURGEON_COLORS[row.chir];
   const pL = px(row.startPlan, width), pW = Math.max((row.planned / DAY_W) * width, 3);
   const rL = px(row.startReal, width), rW = Math.max((row.actual / DAY_W) * width, 3);
   return (
     <div style={{ position:"relative", height:32, marginBottom:4 }}>
-      <div title={`Plan (${row.planned} min): ${minToTime(row.startPlan)}–${minToTime(row.endPlan)}`} style={{
+      <div title={`Plan #${row.planId ?? "—"} · Plan (${row.planned} min): ${minToTime(row.startPlan)}–${minToTime(row.endPlan)}`} style={{
         position:"absolute", left:pL, width:pW, height:13, top:1,
-        border:`2px solid ${planColor}`, borderRadius:3, opacity:0.8,
+        border:`2px solid ${row.isCarryOver ? "#ff2244" : planColor}`,
+        borderRadius:3, opacity:0.8,
       }} />
-      <div title={`Actual: ${minToTime(row.startReal)}–${minToTime(row.endReal)} (${row.actual} min)`} style={{
+      <div title={`Plan #${row.planId ?? "—"} · Actual: ${minToTime(row.startReal)}–${minToTime(row.endReal)} (${row.actual} min)${row.isCarryOver ? " · CARRY-OVER" : ""}`} style={{
         position:"absolute", left:rL, width:rW, height:13, top:17,
-        background:color, borderRadius:3, opacity:0.9,
+        background: row.isCarryOver ? "#ff2244" : color,
+        borderRadius:3, opacity: row.isCarryOver ? 1 : 0.9,
         ...(row.delay > 10 ? { outline:"2px solid #ff4d4d", outlineOffset:1 } : {}),
       }} />
     </div>
@@ -364,106 +418,90 @@ function buildRandomPlan(n) {
     chir: SURGEONS[Math.floor(Math.random() * SURGEONS.length)],
   }));
 }
-
 function buildEmptySlots(n) {
   return Array.from({ length: n }, () => ({ proc: null, chir: "A" }));
 }
 
-// ── Mini Gantt preview (plan only, live) ─────────────────────────────────
-function MiniGantt({ slots, matrix, planMode, customOffsets, planColor }) {
-  // build timeline from filled slots only
+function MiniGantt({ slots, matrix, planMode, customOffsets, planColor, numDays }) {
   const filledSlots = slots.filter(s => s.proc !== null);
   if (filledSlots.length === 0) return null;
-
-  let t = START;
-  const bars = filledSlots.map((s, i) => {
-    const dur = getPlanned(matrix, s.proc, s.chir, planMode, customOffsets);
-    const start = t;
-    const end = t + dur;
-    t = end + PREP;
-    return { ...s, start, end, dur, id: i + 1 };
+  const W = 460;
+  // build bars per day — same plan repeats each day, LP is continuous
+  const days = Array.from({ length: numDays }, (_, d) => {
+    let t = START;
+    const bars = filledSlots.map((s, i) => {
+      const dur = getPlanned(matrix, s.proc, s.chir, planMode, customOffsets);
+      const start = t; const end = t + dur;
+      t = end + PREP;
+      const lp = d * filledSlots.length + i + 1; // continuous LP
+      return { ...s, start, end, dur, lp };
+    });
+    const lastEnd = bars[bars.length - 1].end;
+    return { d, bars, lastEnd, overtime: lastEnd > END };
   });
-  const lastEnd = bars[bars.length - 1].end;
-  const overtime = lastEnd > END;
-  const W = 560;
 
   return (
-    <div style={{ marginTop:20, background:"#0a0a0f", borderRadius:8, padding:"14px 16px",
-      border:"1px solid #1e1e2a" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-        <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-          fontFamily:"'JetBrains Mono',monospace" }}>Plan preview · {planMode.toUpperCase()}</div>
-        <div style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
-          color: overtime ? "#ff6b6b" : "#6bcb77", fontWeight:600 }}>
-          End: {minToTime(lastEnd)}{overtime ? " ⚠ overtime" : ""}
+    <div style={{ marginTop:20, background:"#0a0a0f", borderRadius:8, padding:"14px 16px", border:"1px solid #1e1e2a" }}>
+      <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+        fontFamily:"'JetBrains Mono',monospace", marginBottom:12 }}>
+        Plan preview · {planMode.toUpperCase()} · {numDays} {numDays === 1 ? "day" : "days"}
+      </div>
+      {days.map(({ d, bars, lastEnd, overtime }) => (
+        <div key={d} style={{ marginBottom:14 }}>
+          {/* day header */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+            <span style={{ fontSize:10, color:"#e07b39", fontWeight:700, fontFamily:"'Syne',sans-serif" }}>Day {d + 1}</span>
+            <span style={{ fontSize:10, fontFamily:"'JetBrains Mono',monospace", color: overtime ? "#ff6b6b" : "#6bcb77" }}>
+              {minToTime(lastEnd)}{overtime ? " ⚠" : " ✓"}
+            </span>
+          </div>
+          {/* time axis */}
+          <div style={{ position:"relative", height:14, marginBottom:2 }}>
+            {Array.from({ length: 9 }, (_, i) => (8 + i) * 60).map(m => (
+              <span key={m} style={{ position:"absolute", left:((m-START)/DAY_W)*W,
+                transform:"translateX(-50%)", fontSize:8, color:"#333", fontFamily:"monospace" }}>
+                {minToTime(m)}
+              </span>
+            ))}
+          </div>
+          {/* bars row */}
+          <div style={{ position:"relative", height:22 }}>
+            <div style={{ position:"absolute", left:((END-START)/DAY_W)*W, top:0, bottom:0, width:1, background:"#ff6b6b33" }} />
+            {bars.map((bar) => {
+              const color = PROC_COLORS[bar.proc] ?? "#888";
+              const bL = ((bar.start-START)/DAY_W)*W;
+              const bW = Math.max((bar.dur/DAY_W)*W, 4);
+              const isOver = bar.end > END;
+              return (
+                <div key={bar.lp}
+                  title={`#${bar.lp} · ${bar.proc} · Surg ${bar.chir} · ${minToTime(bar.start)}–${minToTime(bar.end)} (${bar.dur}')`}
+                  style={{ position:"absolute", top:0, height:20, left:bL, width:bW,
+                    background:`${color}33`, border:`1.5px solid ${color}`, borderRadius:4,
+                    ...(isOver ? { outline:"1.5px solid #ff4d4d", outlineOffset:1 } : {}),
+                  }}>
+                  <span style={{ position:"absolute", left:3, top:"50%", transform:"translateY(-50%)",
+                    fontSize:8, fontFamily:"'JetBrains Mono',monospace", whiteSpace:"nowrap",
+                    color: SURGEON_COLORS[bar.chir], fontWeight:600 }}>#{bar.lp} {bar.dur}'</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
-      {/* time axis */}
-      <div style={{ position:"relative", height:16, marginBottom:4 }}>
-        {Array.from({ length: 9 }, (_, i) => (8 + i) * 60).map(m => (
-          <span key={m} style={{
-            position:"absolute", left: ((m - START) / DAY_W) * W,
-            transform:"translateX(-50%)", fontSize:9, color:"#333", fontFamily:"monospace",
-          }}>{minToTime(m)}</span>
-        ))}
-      </div>
-      {/* bars */}
-      <div style={{ position:"relative", height: bars.length * 26 }}>
-        {/* end of day marker */}
-        <div style={{
-          position:"absolute", left:((END - START) / DAY_W) * W, top:0, bottom:0,
-          width:1, background:"#ff6b6b33",
-        }} />
-        {bars.map((bar) => {
-          const color = PROC_COLORS[bar.proc] ?? "#888";
-          const surgColor = SURGEON_COLORS[bar.chir];
-          const bL = ((bar.start - START) / DAY_W) * W;
-          const bW = Math.max((bar.dur / DAY_W) * W, 4);
-          const isOver = bar.end > END;
-          return (
-            <div key={bar.id} style={{ position:"absolute", top:(bar.id-1)*26, height:20,
-              left:bL, width:bW,
-              background:`${color}33`, border:`1.5px solid ${color}`,
-              borderRadius:4,
-              ...(isOver ? { outline:"1.5px solid #ff4d4d", outlineOffset:1 } : {}),
-            }}
-              title={`Op ${bar.id} · ${bar.proc} · Surg ${bar.chir} · ${minToTime(bar.start)}–${minToTime(bar.end)} (${bar.dur} min)`}>
-              <span style={{
-                position:"absolute", left:5, top:"50%", transform:"translateY(-50%)",
-                fontSize:9, fontFamily:"'JetBrains Mono',monospace", whiteSpace:"nowrap",
-                color: surgColor, fontWeight:600,
-              }}>{bar.proc} · {bar.dur}'</span>
-              {/* end time label */}
-              <span style={{
-                position:"absolute", right:-1, top:-14,
-                fontSize:8, fontFamily:"'JetBrains Mono',monospace",
-                color: isOver ? "#ff6b6b" : "#555",
-              }}>{minToTime(bar.end)}</span>
-            </div>
-          );
-        })}
-      </div>
+      ))}
     </div>
   );
 }
 
-function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t,
-  matrix, planMode, customOffsets, planColor }) {
+function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, matrix, planMode, customOffsets, planColor, numDays }) {
   const [dragProc, setDragProc] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [dragSlotIdx, setDragSlotIdx] = useState(null);
 
-  const handleDragStart = (proc) => setDragProc(proc);
-  const handleDragEnd   = () => { setDragProc(null); setDragOverIdx(null); };
-
   const handleDrop = (idx) => {
     if (!dragProc) return;
     setSlots(prev => prev.map((s, i) => i === idx ? { ...s, proc: dragProc } : s));
-    setDragProc(null);
-    setDragOverIdx(null);
+    setDragProc(null); setDragOverIdx(null);
   };
-
-  const handleSlotDragStart = (idx) => setDragSlotIdx(idx);
   const handleSlotDrop = (idx) => {
     if (dragSlotIdx === null || dragSlotIdx === idx) return;
     setSlots(prev => {
@@ -472,8 +510,7 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t,
       next.splice(idx, 0, moved);
       return next;
     });
-    setDragSlotIdx(null);
-    setDragOverIdx(null);
+    setDragSlotIdx(null); setDragOverIdx(null);
   };
 
   const readyCount = slots.filter(s => s.proc !== null).length;
@@ -481,57 +518,41 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t,
 
   return (
     <div>
-      <div style={{ display:"grid", gridTemplateColumns:"200px 1fr", gap:16 }}>
-        {/* left: procedure pool */}
+      <div style={{ display:"grid", gridTemplateColumns:"180px 1fr", gap:16 }}>
+        {/* left: pool */}
         <div>
-          <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-            marginBottom:10, fontFamily:"'JetBrains Mono',monospace" }}>{t.pool}</div>
+          <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:10, fontFamily:"'JetBrains Mono',monospace" }}>{t.pool}</div>
           {PROCS.map(proc => {
             const color = PROC_COLORS[proc];
             const p50 = matrix[proc]?.C?.p50 ?? Math.round(Math.exp(DEFAULT_PROC_PARAMS[proc]?.mu ?? 4.06));
             return (
-              <div key={proc}
-                draggable
-                onDragStart={() => handleDragStart(proc)}
-                onDragEnd={handleDragEnd}
-                style={{
-                  background:`${color}18`, border:`1px solid ${color}55`,
-                  borderRadius:8, padding:"10px 12px", marginBottom:8,
-                  cursor:"grab", userSelect:"none",
-                  display:"flex", justifyContent:"space-between", alignItems:"center",
-                  transition:"transform 0.1s",
-                  transform: dragProc === proc ? "scale(0.97)" : "scale(1)",
-                }}>
+              <div key={proc} draggable
+                onDragStart={() => setDragProc(proc)}
+                onDragEnd={() => { setDragProc(null); setDragOverIdx(null); }}
+                style={{ background:`${color}18`, border:`1px solid ${color}55`, borderRadius:8, padding:"9px 12px", marginBottom:8, cursor:"grab", userSelect:"none", display:"flex", justifyContent:"space-between", alignItems:"center", transform: dragProc===proc ? "scale(0.97)" : "scale(1)", transition:"transform 0.1s" }}>
                 <span style={{ fontSize:12, fontWeight:600, color }}>{proc}</span>
                 <span style={{ fontSize:10, color:`${color}99`, fontFamily:"'JetBrains Mono',monospace" }}>~{p50}'</span>
               </div>
             );
           })}
-          <div style={{ marginTop:16, fontSize:10, color:"#333", lineHeight:1.6,
-            fontFamily:"'JetBrains Mono',monospace" }}>{t.hint}</div>
+          <div style={{ marginTop:12, fontSize:10, color:"#333", lineHeight:1.6, fontFamily:"'JetBrains Mono',monospace" }}>{t.hint}</div>
         </div>
 
         {/* right: slots */}
         <div>
-          {/* ops count slider */}
-          <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
             <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.opsCount}:</span>
             <input type="range" min={3} max={10} step={1} value={opsCount}
               onChange={e => {
                 const n = parseInt(e.target.value);
                 setOpsCount(n);
-                setSlots(prev => {
-                  if (n > prev.length) return [...prev, ...buildEmptySlots(n - prev.length)];
-                  return prev.slice(0, n);
-                });
+                setSlots(prev => n > prev.length ? [...prev, ...buildEmptySlots(n-prev.length)] : prev.slice(0,n));
               }}
               style={{ flex:1, accentColor:"#e07b39", cursor:"pointer" }} />
-            <span style={{ fontSize:16, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace",
-              minWidth:20, textAlign:"center" }}>{opsCount}</span>
+            <span style={{ fontSize:16, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace", minWidth:20, textAlign:"center" }}>{opsCount}</span>
           </div>
 
-          {/* slot list */}
-          <div style={{ display:"grid", gap:6 }}>
+          <div style={{ display:"grid", gap:5 }}>
             {slots.map((slot, idx) => {
               const color = slot.proc ? PROC_COLORS[slot.proc] : "#333";
               const isOver = dragOverIdx === idx;
@@ -540,75 +561,95 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t,
                 <div key={idx}
                   onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
                   onDragLeave={() => setDragOverIdx(null)}
-                  onDrop={() => {
-                    if (dragSlotIdx !== null) handleSlotDrop(idx);
-                    else handleDrop(idx);
-                  }}
+                  onDrop={() => { if (dragSlotIdx !== null) handleSlotDrop(idx); else handleDrop(idx); }}
                   draggable={slot.proc !== null}
-                  onDragStart={() => handleSlotDragStart(idx)}
+                  onDragStart={() => setDragSlotIdx(idx)}
                   onDragEnd={() => { setDragSlotIdx(null); setDragOverIdx(null); }}
-                  style={{
-                    display:"grid", gridTemplateColumns:"28px 1fr 60px 110px 32px",
-                    alignItems:"center", gap:8,
-                    background: isOver ? "#1a1a2a" : "#111118",
-                    border:`1px solid ${isOver ? "#e07b39" : (slot.proc ? color+"44" : "#1e1e2a")}`,
-                    borderRadius:8, padding:"8px 10px",
-                    transition:"border-color 0.15s, background 0.15s",
-                    cursor: slot.proc ? "grab" : "default",
-                  }}>
-                  <span style={{ fontSize:11, color:"#444", fontFamily:"'JetBrains Mono',monospace",
-                    textAlign:"center" }}>{idx + 1}</span>
-                  {slot.proc ? (
-                    <span style={{ fontSize:12, fontWeight:600, color }}>{slot.proc}</span>
-                  ) : (
-                    <span style={{ fontSize:11, color:"#333", fontStyle:"italic" }}>{t.emptySlot}</span>
-                  )}
-                  {/* duration label */}
-                  <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
-                    color: dur ? `${color}cc` : "#333", textAlign:"right" }}>
-                    {dur ? `${dur}'` : "—"}
-                  </span>
+                  style={{ display:"grid", gridTemplateColumns:"24px 1fr 48px 100px 28px", alignItems:"center", gap:7, background: isOver?"#1a1a2a":"#111118", border:`1px solid ${isOver?"#e07b39":(slot.proc?color+"44":"#1e1e2a")}`, borderRadius:7, padding:"7px 10px", transition:"border-color 0.15s, background 0.15s", cursor: slot.proc?"grab":"default" }}>
+                  <span style={{ fontSize:11, color:"#444", fontFamily:"'JetBrains Mono',monospace", textAlign:"center" }}>{idx+1}</span>
+                  {slot.proc
+                    ? <span style={{ fontSize:12, fontWeight:600, color }}>{slot.proc}</span>
+                    : <span style={{ fontSize:11, color:"#333", fontStyle:"italic" }}>{t.emptySlot}</span>}
+                  <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", color: dur?`${color}cc`:"#333", textAlign:"right" }}>{dur?`${dur}'`:"—"}</span>
                   <select value={slot.chir}
-                    onChange={e => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, chir: e.target.value } : s))}
-                    style={{
-                      background:"#0d0d14", border:"1px solid #252530", borderRadius:6,
-                      color: SURGEON_COLORS[slot.chir], padding:"4px 8px", fontSize:12,
-                      fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif",
-                    }}>
-                    {SURGEONS.map(s => <option key={s} value={s} style={{ color: SURGEON_COLORS[s] }}>{t.slotSurgeon} {s}</option>)}
+                    onChange={e => setSlots(prev => prev.map((s,i) => i===idx?{...s,chir:e.target.value}:s))}
+                    style={{ background:"#0d0d14", border:"1px solid #252530", borderRadius:6, color:SURGEON_COLORS[slot.chir], padding:"4px 6px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
+                    {SURGEONS.map(s => <option key={s} value={s}>{t.slotSurgeon} {s}</option>)}
                   </select>
-                  <button onClick={() => setSlots(prev => prev.map((s, i) => i === idx ? { ...s, proc: null } : s))}
-                    style={{ background:"transparent", border:"none", color:"#333", cursor:"pointer",
-                      fontSize:14, padding:0, lineHeight:1 }}>{t.remove}</button>
+                  <button onClick={() => setSlots(prev => prev.map((s,i) => i===idx?{...s,proc:null}:s))}
+                    style={{ background:"transparent", border:"none", color:"#333", cursor:"pointer", fontSize:14, padding:0, lineHeight:1 }}>{t.remove}</button>
                 </div>
               );
             })}
           </div>
 
-          {/* run button */}
-          <button onClick={onRun} disabled={!allReady}
-            style={{
-              marginTop:16, width:"100%", padding:"12px",
-              background: allReady ? "linear-gradient(135deg,#e07b39,#c45e1a)" : "#1a1a24",
-              color: allReady ? "#fff" : "#444",
-              border:"none", borderRadius:8, fontSize:13, fontWeight:700,
-              cursor: allReady ? "pointer" : "not-allowed",
-              fontFamily:"'Syne',sans-serif", transition:"all 0.2s",
-            }}>
+          <button onClick={onRun} disabled={!allReady} style={{ marginTop:14, width:"100%", padding:"11px", background: allReady?"linear-gradient(135deg,#e07b39,#c45e1a)":"#1a1a24", color: allReady?"#fff":"#444", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor: allReady?"pointer":"not-allowed", fontFamily:"'Syne',sans-serif", transition:"all 0.2s" }}>
             {allReady ? t.runBtn : `${readyCount}/${slots.length} procedur przypisanych`}
           </button>
         </div>
       </div>
+      <MiniGantt slots={slots} matrix={matrix} planMode={planMode} customOffsets={customOffsets} planColor={planColor} numDays={numDays} />
+    </div>
+  );
+}
 
-      {/* live mini gantt */}
-      <MiniGantt slots={slots} matrix={matrix} planMode={planMode}
-        customOffsets={customOffsets} planColor={planColor} />
+// ── Multi-day Gantt display ───────────────────────────────────────────────
+function MultiDayGantt({ days, planColor, t }) {
+  const W = 560;
+  return (
+    <div>
+      {days.map(({ dayIdx, rows, lastEnd }) => {
+        const overtime = lastEnd > END;
+        const carryOvers = rows.filter(r => r.isCarryOver).length;
+        return (
+          <div key={dayIdx} style={{ marginBottom:20 }}>
+            {/* day header */}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:"#e07b39", fontFamily:"'Syne',sans-serif", letterSpacing:"0.05em" }}>
+                {t.day} {dayIdx + 1}
+                {carryOvers > 0 && (
+                  <span style={{ marginLeft:8, fontSize:10, color:"#ff2244", fontFamily:"'JetBrains Mono',monospace", background:"#ff224422", padding:"2px 7px", borderRadius:4 }}>
+                    {t.carryOver}: {carryOvers}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", color: overtime?"#ff6b6b":"#6bcb77" }}>
+                {minToTime(lastEnd)}{overtime ? " ⚠" : " ✓"}
+              </div>
+            </div>
+            {/* axis + rows */}
+            <div style={{ overflowX:"auto" }}>
+              <div style={{ minWidth:700 }}>
+                <div style={{ display:"grid", gridTemplateColumns:"120px 1fr" }}>
+                  <div /><TimeAxis width={W} />
+                </div>
+                {/* end-of-day line */}
+                <div style={{ position:"relative" }}>
+                  <div style={{ position:"absolute", left: 120 + px(END, W), top:0, bottom:0, width:1, background:"#ff6b6b44", zIndex:1 }} />
+                  {rows.map(row => (
+                    <div key={row.id} style={{ display:"grid", gridTemplateColumns:"120px 1fr", alignItems:"center" }}>
+                      <div style={{ fontSize:10, fontFamily:"'JetBrains Mono',monospace", paddingRight:8,
+                        color: row.isCarryOver ? "#ff2244" : "#666" }}>
+                        {row.isCarryOver && <span style={{ fontSize:9, color:"#ff2244" }}>↩ </span>}
+                        <span style={{ color:"#555" }}>#{row.planId ?? "—"} </span>
+                        Op {row.id} · <span style={{ color: row.isCarryOver ? "#ff2244" : SURGEON_COLORS[row.chir] }}>{row.chir}</span>
+                        <br /><span style={{ color:"#444", fontSize:9 }}>{row.proc}</span>
+                      </div>
+                      <GanttRow row={row} width={W} planColor={planColor} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ── main ──────────────────────────────────────────────────────────────────
-export default function ORSimV4() {
+export default function ORSimV5() {
   const [procParams, setProcParams] = useState(DEFAULT_PROC_PARAMS);
   const [planMode, setPlanMode] = useState("mean");
   const [customOffsets, setCustomOffsets] = useState({ Appendectomy:0, Cholecystectomy:0, "Hernia Repair":0 });
@@ -616,61 +657,61 @@ export default function ORSimV4() {
   const [activeTab, setActiveTab] = useState("schedule");
   const [showHelp, setShowHelp] = useState(false);
   const [lang, setLang] = useState("pl");
+  const [numDays, setNumDays] = useState(3);
+  const [overtimeLimit, setOvertimeLimit] = useState(60); // minutes
 
-  // schedule state
   const [opsCount, setOpsCount] = useState(6);
   const [slots, setSlots] = useState(() => buildRandomPlan(6));
 
   const t = T[lang];
-  // matrix jest stabilna — zależy tylko od procParams, NIE od runs
-  // dzięki temu plan (P50/P80) nie zmienia się między uruchomieniami
   const matrix = useMemo(() => generateHistory(procParams), [procParams]);
 
-  const [results, setResults] = useState(() => {
+  const initDays = useMemo(() => {
     const m = generateHistory(DEFAULT_PROC_PARAMS);
-    return simulate(buildRandomPlan(6), DEFAULT_PROC_PARAMS, m, "mean", {});
-  });
+    return simulateMultiDay(buildRandomPlan(6), DEFAULT_PROC_PARAMS, m, "mean", {}, 3, 60);
+  }, []);
+  const [days, setDays] = useState(initDays);
 
   const runSim = useCallback(() => {
     const validPlan = slots.filter(s => s.proc !== null);
     if (validPlan.length === 0) return;
     setRuns(r => r + 1);
-    // matrix (plan) jest stabilna — tylko simulate losuje nową realizację
-    setResults(simulate(validPlan, procParams, matrix, planMode, customOffsets));
+    setDays(simulateMultiDay(validPlan, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit));
     setActiveTab("gantt");
-  }, [slots, procParams, matrix, planMode, customOffsets]);
+  }, [slots, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit]);
 
   const handleModeChange = (mode) => {
     setPlanMode(mode);
     const validPlan = slots.filter(s => s.proc !== null);
-    setResults(simulate(validPlan, procParams, matrix, mode, customOffsets));
+    setDays(simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit));
   };
 
-  const handleRandomize = () => {
-    const plan = buildRandomPlan(opsCount);
-    setSlots(plan);
-  };
+  const handleRandomize = () => setSlots(buildRandomPlan(opsCount));
 
   const setParam = (proc, key, val) =>
     setProcParams(prev => ({ ...prev, [proc]: { ...prev[proc], [key]: val } }));
   const setOffset = (proc, val) =>
     setCustomOffsets(prev => ({ ...prev, [proc]: val }));
 
-  // ── KPIs ──
-  const sumDelay   = results.reduce((a, r) => a + r.delay, 0);
-  const totalDelay = results.reduce((a, r) => a + Math.max(0, r.delay), 0);
-  const lastEnd    = results.at(-1)?.endReal ?? END;
+  // ── KPIs (aggregate across all days) ──
+  const allRows = days.flatMap(d => d.rows);
+  const sumDelay   = allRows.reduce((a, r) => a + r.delay, 0);
+  const totalDelay = allRows.reduce((a, r) => a + Math.max(0, r.delay), 0);
+  const lastEnd    = days.at(-1)?.lastEnd ?? END;
   const overtime   = lastEnd > END;
-  const efficiency   = ((results.reduce((a,r)=>a+r.actual,0) + PREP*(results.length-1)) / (END-START)) * 100;
-  const utilization  = (results.reduce((a,r)=>a+r.actual,0) / (END-START)) * 100;
+  const efficiency = allRows.length
+    ? ((allRows.reduce((a,r)=>a+r.actual,0) + PREP*(allRows.length-1)) / ((END-START)*numDays)) * 100 : 0;
+  const utilization = allRows.length
+    ? (allRows.reduce((a,r)=>a+r.actual,0) / ((END-START)*numDays)) * 100 : 0;
+  const totalCarryOver = days.reduce((a, d) => a + d.rows.filter(r => r.isCarryOver).length, 0);
 
   const surgeonBias = Object.keys(SURGEON_COLORS).map(s => {
-    const ops = results.filter(r => r.chir === s);
+    const ops = allRows.filter(r => r.chir === s);
     const avg = ops.length ? ops.reduce((a,r)=>a+r.delay,0)/ops.length : 0;
     return { surg: s, bias: Math.round(avg*10)/10, fill: SURGEON_COLORS[s] };
   });
   const procBias = Object.keys(DEFAULT_PROC_PARAMS).map(p => {
-    const ops = results.filter(r => r.proc === p);
+    const ops = allRows.filter(r => r.proc === p);
     const avg = ops.length ? ops.reduce((a,r)=>a+r.delay,0)/ops.length : 0;
     return { proc: p.replace("Hernia Repair","Hernia"), bias: Math.round(avg*10)/10 };
   });
@@ -680,9 +721,9 @@ export default function ORSimV4() {
       planned: getPlanned(matrix, proc, surg, planMode, customOffsets),
     }))
   );
-  const scatterData = results.map(r => ({
+  const scatterData = allRows.map(r => ({
     planned: r.planned, actual: r.actual,
-    fill: SURGEON_COLORS[r.chir], name: `Op${r.id} ${r.chir}`,
+    fill: r.isCarryOver ? "#ff2244" : SURGEON_COLORS[r.chir], name: `Op${r.id} D${r.dayIdx+1} ${r.chir}`,
   }));
 
   const MODE_CONFIG = {
@@ -692,26 +733,21 @@ export default function ORSimV4() {
     custom: { color:"#a78bfa", ...t.planning.modes.custom },
   };
 
-  const procLabel = (proc) => proc;
-
   return (
-    <div style={{ minHeight:"100vh", background:"#0a0a0f", color:"#ddd",
-      fontFamily:"'Syne',sans-serif", padding:"28px 24px" }}>
+    <div style={{ minHeight:"100vh", background:"#0a0a0f", color:"#ddd", fontFamily:"'Syne',sans-serif", padding:"28px 24px" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box}
         input[type=range]{height:4px;border-radius:2px}
         select{outline:none}
         .card{background:#111118;border:1px solid #1e1e2a;border-radius:10px;padding:18px 20px}
-        .tab{padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;
-          letter-spacing:0.04em;transition:all 0.15s;border:none;font-family:'Syne',sans-serif}
+        .tab{padding:7px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;letter-spacing:0.04em;transition:all 0.15s;border:none;font-family:'Syne',sans-serif}
         .tab-active{background:#e07b39;color:#fff}
         .tab-inactive{background:transparent;color:#555;border:1px solid #252530}
         .tab-inactive:hover{color:#999;border-color:#444}
-        th{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#444;
-          font-weight:500;padding:4px 8px;text-align:left}
+        th{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#444;font-weight:500;padding:4px 8px;text-align:left}
         td{padding:5px 8px;font-size:12px;border-bottom:1px solid #161620}
-        .kpi-val{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:500;line-height:1}
+        .kpi-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:500;line-height:1}
         .kpi-lbl{font-size:10px;color:#555;letter-spacing:0.1em;text-transform:uppercase;margin-top:5px}
         ::-webkit-scrollbar{width:5px;height:5px}
         ::-webkit-scrollbar-track{background:#111}
@@ -721,91 +757,76 @@ export default function ORSimV4() {
       {/* header */}
       <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20 }}>
         <div>
-          <div style={{ fontSize:10, letterSpacing:"0.2em", color:"#333", textTransform:"uppercase",
-            fontFamily:"'JetBrains Mono',monospace", marginBottom:6 }}>{t.subtitle}</div>
-          <h1 style={{ margin:0, fontSize:20, fontWeight:700, color:"#f0ede8", letterSpacing:"-0.02em" }}>
-            {t.title}
-          </h1>
+          <div style={{ fontSize:10, letterSpacing:"0.2em", color:"#333", textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace", marginBottom:6 }}>{t.subtitle}</div>
+          <h1 style={{ margin:0, fontSize:20, fontWeight:700, color:"#f0ede8", letterSpacing:"-0.02em" }}>{t.title}</h1>
           <div style={{ fontSize:11, color:"#444", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
             {t.planMode}: <span style={{ color: MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</span>
-            {" "}· {t.run} #{runs}
+            {" "}· {numDays}d · {t.run} #{runs}
           </div>
         </div>
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+          {/* days slider */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:"#111118", border:"1px solid #1e1e2a", borderRadius:8, padding:"8px 14px" }}>
+            <span style={{ fontSize:11, color:"#666", whiteSpace:"nowrap" }}>{t.daysLabel}:</span>
+            <input type="range" min={1} max={5} step={1} value={numDays}
+              onChange={e => setNumDays(parseInt(e.target.value))}
+              style={{ width:80, accentColor:"#e07b39", cursor:"pointer" }} />
+            <span style={{ fontSize:14, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace", minWidth:16 }}>{numDays}</span>
+          </div>
+          {/* overtime slider */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:"#111118", border:"1px solid #1e1e2a", borderRadius:8, padding:"8px 14px" }}>
+            <span style={{ fontSize:11, color:"#666", whiteSpace:"nowrap" }}>{t.overtimeLabel}:</span>
+            <input type="range" min={0} max={120} step={15} value={overtimeLimit}
+              onChange={e => setOvertimeLimit(parseInt(e.target.value))}
+              style={{ width:80, accentColor:"#ff6b6b", cursor:"pointer" }} />
+            <span style={{ fontSize:14, fontWeight:700, color:"#ff6b6b", fontFamily:"'JetBrains Mono',monospace", minWidth:32 }}>{overtimeLimit}'</span>
+          </div>
+          {/* lang */}
           <div style={{ display:"flex", borderRadius:8, overflow:"hidden", border:"1px solid #252530" }}>
             {["pl","en"].map(l => (
-              <button key={l} onClick={() => setLang(l)} style={{
-                padding:"8px 14px", background: lang===l ? "#e07b39" : "transparent",
-                color: lang===l ? "#fff" : "#555", border:"none", cursor:"pointer",
-                fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:12,
-                transition:"all 0.15s",
-              }}>{l.toUpperCase()}</button>
+              <button key={l} onClick={() => setLang(l)} style={{ padding:"8px 14px", background: lang===l?"#e07b39":"transparent", color: lang===l?"#fff":"#555", border:"none", cursor:"pointer", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:12, transition:"all 0.15s" }}>{l.toUpperCase()}</button>
             ))}
           </div>
-          <button onClick={() => setShowHelp(true)} style={{
-            background:"transparent", color:"#555", border:"1px solid #252530",
-            borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700,
-            cursor:"pointer", fontFamily:"'Syne',sans-serif",
-          }}>{t.help}</button>
-          <button onClick={runSim} style={{
-            background:"linear-gradient(135deg,#e07b39,#c45e1a)", color:"#fff",
-            border:"none", borderRadius:8, padding:"10px 24px", fontSize:13,
-            fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif",
-          }}>{t.runBtn}</button>
+          <button onClick={() => setShowHelp(true)} style={{ background:"transparent", color:"#555", border:"1px solid #252530", borderRadius:8, padding:"10px 16px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>{t.help}</button>
+          <button onClick={runSim} style={{ background:"linear-gradient(135deg,#e07b39,#c45e1a)", color:"#fff", border:"none", borderRadius:8, padding:"10px 24px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>{t.runBtn}</button>
         </div>
       </div>
 
       {/* ── HELP MODAL ── */}
       {showHelp && (
-        <div onClick={() => setShowHelp(false)} style={{
-          position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000,
-          display:"flex", alignItems:"center", justifyContent:"center", padding:24,
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background:"#111118", border:"1px solid #1e1e2a", borderRadius:12,
-            padding:"28px 32px", maxWidth:580, width:"100%", maxHeight:"80vh",
-            overflowY:"auto", position:"relative",
-          }}>
-            <button onClick={() => setShowHelp(false)} style={{
-              position:"absolute", top:16, right:16, background:"transparent",
-              border:"none", color:"#555", fontSize:20, cursor:"pointer", lineHeight:1,
-            }}>✕</button>
-            <div style={{ fontSize:10, letterSpacing:"0.15em", color:"#444", textTransform:"uppercase",
-              fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{t.helpModal.label}</div>
+        <div onClick={() => setShowHelp(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background:"#111118", border:"1px solid #1e1e2a", borderRadius:12, padding:"28px 32px", maxWidth:580, width:"100%", maxHeight:"80vh", overflowY:"auto", position:"relative" }}>
+            <button onClick={() => setShowHelp(false)} style={{ position:"absolute", top:16, right:16, background:"transparent", border:"none", color:"#555", fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
+            <div style={{ fontSize:10, letterSpacing:"0.15em", color:"#444", textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{t.helpModal.label}</div>
             <h2 style={{ margin:"0 0 20px", fontSize:18, color:"#f0ede8" }}>{t.helpModal.title}</h2>
             {t.helpModal.steps.map(({ title, body }, i) => (
               <div key={i} style={{ marginBottom:18 }}>
                 <div style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:6 }}>
-                  <span style={{ background:"#e07b39", color:"#fff", borderRadius:"50%", width:20, height:20,
-                    display:"inline-flex", alignItems:"center", justifyContent:"center",
-                    fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</span>
+                  <span style={{ background:"#e07b39", color:"#fff", borderRadius:"50%", width:20, height:20, display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</span>
                   <span style={{ fontSize:13, fontWeight:700, color:"#e0d8cc" }}>{title}</span>
                 </div>
                 <div style={{ fontSize:12, color:"#666", lineHeight:1.7, paddingLeft:30 }}>{body}</div>
               </div>
             ))}
-            <div style={{ borderTop:"1px solid #1e1e2a", paddingTop:14, marginTop:4,
-              fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", textAlign:"center" }}>
-              {t.helpModal.close}
-            </div>
+            <div style={{ borderTop:"1px solid #1e1e2a", paddingTop:14, marginTop:4, fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", textAlign:"center" }}>{t.helpModal.close}</div>
           </div>
         </div>
       )}
 
-      {/* KPIs */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:10, marginBottom:16 }}>
+      {/* KPIs — 7 cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:8, marginBottom:16 }}>
         {[
-          { val:`${sumDelay>0?"+":""}${sumDelay}'`, label:t.kpi.sumDelay, color:sumDelay>0?"#ff6b6b":sumDelay<0?"#6bcb77":"#888", tip:null },
-          { val:`${totalDelay}'`, label:t.kpi.totalDelay, color:"#ff9f43", tip:null },
+          { val:`${sumDelay>0?"+":""}${sumDelay}'`, label:t.kpi.sumDelay, color:sumDelay>0?"#ff6b6b":sumDelay<0?"#6bcb77":"#888" },
+          { val:`${totalDelay}'`, label:t.kpi.totalDelay, color:"#ff9f43" },
           { val:`${efficiency.toFixed(1)}%`, label:t.kpi.efficiency, color:efficiency>=85?"#6bcb77":efficiency>=70?"#e0c039":"#ff6b6b", tip:t.kpi.efficiencyTip },
           { val:`${utilization.toFixed(1)}%`, label:t.kpi.utilization, color:utilization>=75?"#6bcb77":utilization>=60?"#e0c039":"#ff6b6b", tip:t.kpi.utilizationTip },
-          { val:minToTime(lastEnd), label:t.kpi.lastEnd, color:overtime?"#ff6b6b":"#6bcb77", tip:null },
-          { val:`${results.filter(r=>r.delay>0).length}/${results.length}`, label:t.kpi.overruns, color:"#a78bfa", tip:null },
+          { val:minToTime(lastEnd), label:t.kpi.lastEnd, color:overtime?"#ff6b6b":"#6bcb77" },
+          { val:`${allRows.filter(r=>r.delay>0).length}/${allRows.length}`, label:t.kpi.overruns, color:"#a78bfa" },
+          { val:`${totalCarryOver}`, label:t.kpi.carryOver, color:totalCarryOver>0?"#ff2244":"#6bcb77", tip:t.kpi.carryOverTip },
         ].map(({ val, label, color, tip }) => (
-          <div key={label} className="card" title={tip ?? ""}>
+          <div key={label} className="card" title={tip??""}>
             <div className="kpi-val" style={{ color }}>{val}</div>
             <div className="kpi-lbl">{label}</div>
-            {tip && <div style={{ fontSize:9, color:"#444", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>{tip}</div>}
           </div>
         ))}
       </div>
@@ -813,8 +834,7 @@ export default function ORSimV4() {
       {/* tabs */}
       <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
         {Object.entries(t.tabs).map(([k,lbl]) => (
-          <button key={k} className={`tab ${activeTab===k?"tab-active":"tab-inactive"}`}
-            onClick={()=>setActiveTab(k)}>{lbl}</button>
+          <button key={k} className={`tab ${activeTab===k?"tab-active":"tab-inactive"}`} onClick={()=>setActiveTab(k)}>{lbl}</button>
         ))}
       </div>
 
@@ -822,46 +842,30 @@ export default function ORSimV4() {
       {activeTab === "schedule" && (
         <div className="card">
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-              fontFamily:"'JetBrains Mono',monospace" }}>{t.schedule.title}</div>
-            <button onClick={handleRandomize} style={{
-              background:"#1a1a28", border:"1px solid #252530", color:"#aaa",
-              borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600,
-              cursor:"pointer", fontFamily:"'Syne',sans-serif",
-            }}>{t.schedule.randomize}</button>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace" }}>{t.schedule.title}</div>
+            <button onClick={handleRandomize} style={{ background:"#1a1a28", border:"1px solid #252530", color:"#aaa", borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>{t.schedule.randomize}</button>
           </div>
-          <ScheduleBuilder
-            slots={slots} setSlots={setSlots}
-            opsCount={opsCount} setOpsCount={setOpsCount}
-            onRun={runSim} t={t.schedule}
-            matrix={matrix} planMode={planMode}
-            customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color}
-          />
+          <ScheduleBuilder slots={slots} setSlots={setSlots} opsCount={opsCount} setOpsCount={setOpsCount}
+            onRun={runSim} t={t.schedule} matrix={matrix} planMode={planMode}
+            customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color} numDays={numDays} />
         </div>
       )}
 
-      {/* ── PLANNING PARAMS tab ── */}
+      {/* ── PLANNING tab ── */}
       {activeTab === "planning" && (
         <div style={{ display:"grid", gap:14 }}>
           <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-              marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
-              {t.planning.modeTitle}
-            </div>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>{t.planning.modeTitle}</div>
             <div style={{ display:"flex", gap:10, marginBottom:16 }}>
               {Object.entries(MODE_CONFIG).map(([mode, cfg]) => (
-                <ModeBtn key={mode} mode={mode} active={planMode===mode}
-                  onClick={handleModeChange} label={cfg.label} desc={cfg.desc} color={cfg.color} />
+                <ModeBtn key={mode} mode={mode} active={planMode===mode} onClick={handleModeChange} label={cfg.label} desc={cfg.desc} color={cfg.color} />
               ))}
             </div>
             <div style={{ background:"#0d0d14", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#555", lineHeight:1.7 }}>
               <strong style={{ color:"#777" }}>{t.planning.explainTitle}</strong><br/>
-              {t.planning.explainBody}
-              <span style={{ color:"#ff6b6b" }}>{t.planning.explainHighlight}</span>
-              {t.planning.explainSuffix}
+              {t.planning.explainBody}<span style={{ color:"#ff6b6b" }}>{t.planning.explainHighlight}</span>{t.planning.explainSuffix}
             </div>
           </div>
-
           <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
             {Object.entries(DEFAULT_PROC_PARAMS).map(([proc, { mu, sigma }]) => {
               const color = PROC_COLORS[proc];
@@ -874,25 +878,23 @@ export default function ORSimV4() {
               const meanVal = Math.round(lognormMean(mu, sigma));
               const medVal  = Math.round(lognormP50(mu, sigma));
               const p80Val  = Math.round(lognormP80(mu, sigma));
-
               return (
                 <div key={proc} className="card" style={{ borderTop:`2px solid ${color}` }}>
-                  <div style={{ fontSize:13, fontWeight:600, color, marginBottom:12 }}>{procLabel(proc)}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color, marginBottom:12 }}>{proc}</div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:14 }}>
                     {[
-                      { key:"mean", label:"Średnia", val:`${mean}'`, color:"#ff6b6b", note:t.planning.badges.mean },
-                      { key:"p50",  label:"P50",     val:`${p50}'`,  color:"#e07b39", note:t.planning.badges.p50 },
-                      { key:"p80",  label:"P80",     val:`${p80}'`,  color:"#6bcb77", note:t.planning.badges.p80 },
+                      { key:"mean", label:"Mean",   val:`${mean}'`, color:"#ff6b6b", note:t.planning.badges.mean },
+                      { key:"p50",  label:"P50",    val:`${p50}'`,  color:"#e07b39", note:t.planning.badges.p50 },
+                      { key:"p80",  label:"P80",    val:`${p80}'`,  color:"#6bcb77", note:t.planning.badges.p80 },
                     ].map(b => (
-                      <div key={b.key} style={{ background:"#0d0d14", borderRadius:6, padding:"8px 10px",
-                        border:`1px solid ${planMode === b.key ? b.color+"66" : "#1e1e2a"}` }}>
+                      <div key={b.key} style={{ background:"#0d0d14", borderRadius:6, padding:"8px 10px", border:`1px solid ${planMode===b.key?b.color+"66":"#1e1e2a"}` }}>
                         <div style={{ fontSize:16, fontWeight:600, color:b.color, fontFamily:"'JetBrains Mono',monospace" }}>{b.val}</div>
                         <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{b.label}</div>
                         <div style={{ fontSize:9, color:b.color+"99" }}>{b.note}</div>
                       </div>
                     ))}
                   </div>
-                  <ResponsiveContainer width="100%" height={100}>
+                  <ResponsiveContainer width="100%" height={90}>
                     <AreaChart data={curve} margin={{ top:8, right:4, bottom:0, left:-28 }}>
                       <defs>
                         <linearGradient id={`pg-${proc.replace(/\s/g,"")}`} x1="0" y1="0" x2="0" y2="1">
@@ -903,58 +905,41 @@ export default function ORSimV4() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#1a1a26" vertical={false} />
                       <XAxis dataKey="x" tick={{ fontSize:9, fill:"#555" }} tickFormatter={v=>`${v}'`} interval="preserveStartEnd" />
                       <YAxis hide />
-                      <ReferenceLine x={meanVal} stroke="#ff6b6b" strokeWidth={2} strokeDasharray="3 2"
-                        label={{ value:`ś=${meanVal}'`, position:"top", fill:"#ff6b6b", fontSize:8 }} />
-                      <ReferenceLine x={medVal} stroke="#e07b39" strokeWidth={2} strokeDasharray="5 2"
-                        label={{ value:`P50=${medVal}'`, position:"top", fill:"#e07b39", fontSize:8 }} />
-                      <ReferenceLine x={p80Val} stroke="#6bcb77" strokeWidth={1} strokeDasharray="2 3"
-                        label={{ value:`P80=${p80Val}'`, position:"top", fill:"#6bcb77", fontSize:8 }} />
-                      <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }}
-                        formatter={(v,n,p)=>[`${p.payload.x} min`,""]} labelFormatter={()=>""} />
-                      <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2}
-                        fill={`url(#pg-${proc.replace(/\s/g,"")})`} dot={false} activeDot={{ r:3, fill:color }} />
+                      <ReferenceLine x={meanVal} stroke="#ff6b6b" strokeWidth={2} strokeDasharray="3 2" label={{ value:`ś=${meanVal}'`, position:"top", fill:"#ff6b6b", fontSize:8 }} />
+                      <ReferenceLine x={medVal}  stroke="#e07b39" strokeWidth={2} strokeDasharray="5 2" label={{ value:`P50=${medVal}'`, position:"top", fill:"#e07b39", fontSize:8 }} />
+                      <ReferenceLine x={p80Val}  stroke="#6bcb77" strokeWidth={1} strokeDasharray="2 3" label={{ value:`P80=${p80Val}'`, position:"top", fill:"#6bcb77", fontSize:8 }} />
+                      <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }} formatter={(v,n,p)=>[`${p.payload.x} min`,""]} labelFormatter={()=>""} />
+                      <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2} fill={`url(#pg-${proc.replace(/\s/g,"")})`} dot={false} activeDot={{ r:3, fill:color }} />
                     </AreaChart>
                   </ResponsiveContainer>
                   {planMode === "custom" && (
                     <div style={{ marginTop:12, padding:"10px 12px", background:"#0d0d14", borderRadius:6 }}>
                       <Slider label={t.planning.offsetLabel} value={offset} min={-20} max={30} step={5}
-                        onChange={v => { setOffset(proc, v); const fm = generateHistory(procParams); const vp = slots.filter(s=>s.proc!==null); setResults(simulate(vp, procParams, fm, "custom", {...customOffsets, [proc]:v})); }}
+                        onChange={v => { setOffset(proc, v); const vp=slots.filter(s=>s.proc!==null); setDays(simulateMultiDay(vp,procParams,matrix,"custom",{...customOffsets,[proc]:v},numDays,overtimeLimit)); }}
                         color={color} />
-                      <div style={{ fontSize:10, color:"#555", marginTop:2 }}>
-                        {t.planning.offsetBase} ({p50}') + {offset} = <span style={{ color, fontWeight:600 }}>{p50 + offset}'</span>
-                      </div>
+                      <div style={{ fontSize:10, color:"#555", marginTop:2 }}>{t.planning.offsetBase} ({p50}') + {offset} = <span style={{ color, fontWeight:600 }}>{p50+offset}'</span></div>
                     </div>
                   )}
                 </div>
               );
             })}
           </div>
-
           <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-              marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-              {t.planning.diffTitle}
-            </div>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.planning.diffTitle}</div>
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead><tr>
-                {t.planning.diffHeaders.map(h=><th key={h}>{h}</th>)}
-              </tr></thead>
+              <thead><tr>{t.planning.diffHeaders.map(h=><th key={h}>{h}</th>)}</tr></thead>
               <tbody>
-                {matrixRows.map((r,i) => {
-                  const diff = r.mean - r.p50;
-                  return (
-                    <tr key={i}>
-                      <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
-                      <td style={{ color:"#888", fontSize:11 }}>{procLabel(r.proc)}</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43", fontWeight:600 }}>+{diff}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
-                        color: MODE_CONFIG[planMode].color }}>{r.planned}'</td>
-                    </tr>
-                  );
-                })}
+                {matrixRows.map((r,i) => (
+                  <tr key={i}>
+                    <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
+                    <td style={{ color:"#888", fontSize:11 }}>{r.proc}</td>
+                    <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
+                    <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
+                    <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
+                    <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43", fontWeight:600 }}>+{r.mean-r.p50}'</td>
+                    <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:MODE_CONFIG[planMode].color }}>{r.planned}'</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -972,18 +957,12 @@ export default function ORSimV4() {
             const meanVal = Math.round(lognormMean(mu, sigma));
             return (
               <div key={proc} className="card" style={{ borderTop:`2px solid ${color}` }}>
-                <div style={{ fontSize:13, fontWeight:600, color, marginBottom:4 }}>{procLabel(proc)}</div>
-                <div style={{ fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", marginBottom:14 }}>
-                  P50 ≈ {previewMedian}' · śr ≈ {meanVal}' · P80 ≈ {previewP80}'
-                </div>
-                <Slider label="μ (log-scale mean)" value={mu} min={3.5} max={5.0} step={0.01}
-                  onChange={v => setParam(proc, "mu", v)} color={color} />
-                <Slider label="σ (log-scale std)" value={sigma} min={0.10} max={0.60} step={0.01}
-                  onChange={v => setParam(proc, "sigma", v)} color={color} />
+                <div style={{ fontSize:13, fontWeight:600, color, marginBottom:4 }}>{proc}</div>
+                <div style={{ fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", marginBottom:14 }}>P50 ≈ {previewMedian}' · śr ≈ {meanVal}' · P80 ≈ {previewP80}'</div>
+                <Slider label="μ (log-scale mean)" value={mu} min={3.5} max={5.0} step={0.01} onChange={v => setParam(proc,"mu",v)} color={color} />
+                <Slider label="σ (log-scale std)"  value={sigma} min={0.10} max={0.60} step={0.01} onChange={v => setParam(proc,"sigma",v)} color={color} />
                 <div style={{ marginTop:14 }}>
-                  <div style={{ fontSize:10, color:"#333", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, fontFamily:"'JetBrains Mono',monospace" }}>
-                    {t.params.distLabel}
-                  </div>
+                  <div style={{ fontSize:10, color:"#333", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, fontFamily:"'JetBrains Mono',monospace" }}>{t.params.distLabel}</div>
                   <ResponsiveContainer width="100%" height={110}>
                     <AreaChart data={curve} margin={{ top:8, right:4, bottom:0, left:-28 }}>
                       <defs>
@@ -995,16 +974,11 @@ export default function ORSimV4() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#1a1a26" vertical={false} />
                       <XAxis dataKey="x" tick={{ fontSize:9, fill:"#555" }} tickFormatter={v=>`${v}'`} interval="preserveStartEnd" />
                       <YAxis hide />
-                      <ReferenceLine x={meanVal} stroke="#ff6b6b" strokeWidth={2} strokeDasharray="3 2"
-                        label={{ value:`śr=${meanVal}'`, position:"top", fill:"#ff6b6b", fontSize:8 }} />
-                      <ReferenceLine x={previewMedian} stroke="#e07b39" strokeWidth={2} strokeDasharray="5 2"
-                        label={{ value:`P50=${previewMedian}'`, position:"top", fill:"#e07b39", fontSize:8 }} />
-                      <ReferenceLine x={previewP80} stroke="#6bcb77" strokeWidth={1} strokeDasharray="2 3"
-                        label={{ value:`P80=${previewP80}'`, position:"top", fill:"#6bcb77", fontSize:8 }} />
-                      <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }}
-                        formatter={(v,n,p)=>[`${p.payload.x} min`,""]} labelFormatter={()=>""} />
-                      <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2}
-                        fill={`url(#grad-${proc.replace(/\s/g,"")})`} dot={false} activeDot={{ r:3, fill:color }} />
+                      <ReferenceLine x={meanVal}       stroke="#ff6b6b" strokeWidth={2} strokeDasharray="3 2" label={{ value:`śr=${meanVal}'`,      position:"top", fill:"#ff6b6b", fontSize:8 }} />
+                      <ReferenceLine x={previewMedian} stroke="#e07b39" strokeWidth={2} strokeDasharray="5 2" label={{ value:`P50=${previewMedian}'`, position:"top", fill:"#e07b39", fontSize:8 }} />
+                      <ReferenceLine x={previewP80}    stroke="#6bcb77" strokeWidth={1} strokeDasharray="2 3" label={{ value:`P80=${previewP80}'`,    position:"top", fill:"#6bcb77", fontSize:8 }} />
+                      <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }} formatter={(v,n,p)=>[`${p.payload.x} min`,""]} labelFormatter={()=>""} />
+                      <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2} fill={`url(#grad-${proc.replace(/\s/g,"")})`} dot={false} activeDot={{ r:3, fill:color }} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1014,9 +988,7 @@ export default function ORSimV4() {
                     return (
                       <div key={s} style={{ display:"flex", justifyContent:"space-between", marginBottom:3, fontSize:11 }}>
                         <span style={{ color:SURGEON_COLORS[s], fontWeight:600 }}>{t.params.surgeon} {s}</span>
-                        <span style={{ fontFamily:"'JetBrains Mono',monospace", color:"#888" }}>
-                          śr {cell?.mean}' · P50 {cell?.p50}' · P80 {cell?.p80}'
-                        </span>
+                        <span style={{ fontFamily:"'JetBrains Mono',monospace", color:"#888" }}>śr {cell?.mean}' · P50 {cell?.p50}' · P80 {cell?.p80}'</span>
                       </div>
                     );
                   })}
@@ -1033,11 +1005,15 @@ export default function ORSimV4() {
           <div style={{ display:"flex", gap:20, marginBottom:14, flexWrap:"wrap", fontSize:11 }}>
             <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
               <span style={{ border:`2px solid ${MODE_CONFIG[planMode].color}`, width:18, height:10, borderRadius:2, display:"inline-block" }} />
-              {t.gantt.planLabel} <strong style={{ color: MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</strong>
+              {t.gantt.planLabel} <strong style={{ color:MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</strong>
             </span>
             <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
               <span style={{ background:"#aaa", width:18, height:10, borderRadius:2, display:"inline-block" }} />
               {t.gantt.actual}
+            </span>
+            <span style={{ display:"flex", alignItems:"center", gap:6, color:"#ff2244" }}>
+              <span style={{ background:"#ff2244", width:18, height:10, borderRadius:2, display:"inline-block" }} />
+              {t.gantt.carryOver}
             </span>
             {["A","B","C"].map(s => (
               <span key={s} style={{ display:"flex", alignItems:"center", gap:5, color:"#666" }}>
@@ -1046,47 +1022,57 @@ export default function ORSimV4() {
               </span>
             ))}
           </div>
-          <div style={{ overflowX:"auto" }}>
-            <div style={{ minWidth:640 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"120px 1fr" }}>
-                <div /><TimeAxis width={580} />
-              </div>
-              {results.map(row => (
-                <div key={row.id} style={{ display:"grid", gridTemplateColumns:"120px 1fr", alignItems:"center" }}>
-                  <div style={{ fontSize:10, color:"#666", fontFamily:"'JetBrains Mono',monospace", paddingRight:8 }}>
-                    Op {row.id} · <span style={{ color:SURGEON_COLORS[row.chir] }}>{row.chir}</span>
-                    <br /><span style={{ color:"#444", fontSize:9 }}>{procLabel(row.proc)}</span>
-                  </div>
-                  <GanttRow row={row} width={580} planColor={MODE_CONFIG[planMode].color} />
-                </div>
-              ))}
-            </div>
+          <MultiDayGantt days={days} planColor={MODE_CONFIG[planMode].color} t={t.gantt} />
+
+          {/* table — all days */}
+          <div style={{ marginTop:20 }}>
+            {(() => {
+              // collect planIds that appeared as carry-over in any day
+              const carryOverIds = new Set(
+                days.flatMap(d => d.rows.filter(r => r.isCarryOver).map(r => r.planId))
+              );
+              return (
+                <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                  <thead><tr>{t.gantt.tableHeaders.map(h=><th key={h}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {days.flatMap(d => d.rows).map((r, i) => {
+                      const wasCarriedOver = carryOverIds.has(r.planId);
+                      return (
+                        <tr key={i} style={{ background: r.isCarryOver ? "#ff224410" : "transparent" }}>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                            color: wasCarriedOver ? "#ff2244" : "#aaa", fontWeight: wasCarriedOver ? 700 : 400 }}>
+                            D{r.dayIdx+1}-{r.id}
+                          </td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                            color: wasCarriedOver ? "#ff2244" : "#555", fontWeight: wasCarriedOver ? 700 : 400, fontSize:11 }}>
+                            #{r.planId ?? "—"}
+                          </td>
+                          <td><span style={{ color: r.isCarryOver?"#ff2244":SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
+                          <td style={{ color:"#666", fontSize:11 }}>{r.proc}{r.isCarryOver?" ↩":""}</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", color:MODE_CONFIG[planMode].color, fontWeight:600 }}>{r.planned}'</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.startPlan)}</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.endPlan)}</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.actual}'</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
+                            color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>{r.delay>0?"+":""}{r.delay}'</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#666" }}>{minToTime(r.startReal)}</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
+                            color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, textAlign:"center" }}>
+                            {r.isCarryOver
+                              ? <span style={{ color:"#ff2244", fontWeight:700 }}>↩ D{r.dayIdx}</span>
+                              : wasCarriedOver
+                              ? <span style={{ color:"#ff9f43", fontSize:10 }}>→ D{r.dayIdx+2}</span>
+                              : <span style={{ color:"#333" }}>—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              );
+            })()}
           </div>
-          <table style={{ width:"100%", borderCollapse:"collapse", marginTop:16 }}>
-            <thead><tr>
-              {t.gantt.tableHeaders.map(h=><th key={h}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {results.map(r => (
-                <tr key={r.id}>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.id}</td>
-                  <td><span style={{ color:SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
-                  <td style={{ color:"#666", fontSize:11 }}>{procLabel(r.proc)}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", color: MODE_CONFIG[planMode].color, fontWeight:600 }}>{r.planned}'</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.startPlan)}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color: MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.endPlan)}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.actual}'</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
-                    color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>
-                    {r.delay>0?"+":""}{r.delay}'
-                  </td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#666" }}>{minToTime(r.startReal)}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
-                    color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
 
@@ -1094,55 +1080,41 @@ export default function ORSimV4() {
       {activeTab === "bias" && (
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-              {t.bias.bySurgeon}
-            </div>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.bias.bySurgeon}</div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={surgeonBias} margin={{ top:4,right:4,bottom:0,left:-10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
                 <XAxis dataKey="surg" tick={{ fontSize:11, fill:"#666" }} />
                 <YAxis tick={{ fontSize:10, fill:"#555" }} />
                 <ReferenceLine y={0} stroke="#333" strokeWidth={1.5} />
-                <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:12 }}
-                  formatter={v=>[`${v>0?"+":""}${v} min`, t.bias.avgDelta]} />
-                <Bar dataKey="bias" radius={[4,4,0,0]}>
-                  {surgeonBias.map((e,i)=><Cell key={i} fill={e.fill} />)}
-                </Bar>
+                <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:12 }} formatter={v=>[`${v>0?"+":""}${v} min`,t.bias.avgDelta]} />
+                <Bar dataKey="bias" radius={[4,4,0,0]}>{surgeonBias.map((e,i)=><Cell key={i} fill={e.fill} />)}</Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-              {t.bias.byProc}
-            </div>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.bias.byProc}</div>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={procBias} margin={{ top:4,right:4,bottom:0,left:-10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
                 <XAxis dataKey="proc" tick={{ fontSize:11, fill:"#666" }} />
                 <YAxis tick={{ fontSize:10, fill:"#555" }} />
                 <ReferenceLine y={0} stroke="#333" strokeWidth={1.5} />
-                <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:12 }}
-                  formatter={v=>[`${v>0?"+":""}${v} min`, t.bias.avgDelta]} />
+                <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:12 }} formatter={v=>[`${v>0?"+":""}${v} min`,t.bias.avgDelta]} />
                 <Bar dataKey="bias" radius={[4,4,0,0]} fill="#4a9eff" />
               </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="card" style={{ gridColumn:"1/-1" }}>
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-              {t.bias.scatter}
-            </div>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.bias.scatter}</div>
             <ResponsiveContainer width="100%" height={200}>
               <ScatterChart margin={{ top:4,right:4,bottom:0,left:-10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
                 <XAxis dataKey="planned" name="Plan" type="number" tick={{ fontSize:10, fill:"#555" }} label={{ value:"Plan (min)", position:"insideBottom", offset:-2, fill:"#444", fontSize:10 }} />
-                <YAxis dataKey="actual" name="Actual" type="number" tick={{ fontSize:10, fill:"#555" }} label={{ value:"Actual (min)", angle:-90, position:"insideLeft", fill:"#444", fontSize:10 }} />
+                <YAxis dataKey="actual"  name="Actual" type="number" tick={{ fontSize:10, fill:"#555" }} label={{ value:"Actual (min)", angle:-90, position:"insideLeft", fill:"#444", fontSize:10 }} />
                 <ReferenceLine segment={[{x:30,y:30},{x:130,y:130}]} stroke="#333" strokeDasharray="4 2" label={{ value:t.bias.idealPlan, fill:"#333", fontSize:9 }} />
-                <Tooltip cursor={{ strokeDasharray:"3 3" }}
-                  contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:11 }}
-                  formatter={(v,n,p)=>[`${p.payload.actual} min`, p.payload.name]} />
-                <Scatter data={scatterData}>
-                  {scatterData.map((e,i)=><Cell key={i} fill={e.fill} />)}
-                </Scatter>
+                <Tooltip cursor={{ strokeDasharray:"3 3" }} contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:11 }} formatter={(v,n,p)=>[`${p.payload.actual} min`,p.payload.name]} />
+                <Scatter data={scatterData}>{scatterData.map((e,i)=><Cell key={i} fill={e.fill} />)}</Scatter>
               </ScatterChart>
             </ResponsiveContainer>
           </div>
@@ -1152,23 +1124,18 @@ export default function ORSimV4() {
       {/* ── MATRIX tab ── */}
       {activeTab === "matrix" && (
         <div className="card">
-          <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-            {t.matrix.title}
-          </div>
+          <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.matrix.title}</div>
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead><tr>
-              {t.matrix.headers.map(h=><th key={h}>{h}</th>)}
-            </tr></thead>
+            <thead><tr>{t.matrix.headers.map(h=><th key={h}>{h}</th>)}</tr></thead>
             <tbody>
               {matrixRows.map((r,i) => (
                 <tr key={i}>
                   <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
-                  <td style={{ color:"#888", fontSize:11 }}>{procLabel(r.proc)}</td>
+                  <td style={{ color:"#888", fontSize:11 }}>{r.proc}</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
                   <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
-                    color:MODE_CONFIG[planMode].color }}>{r.planned}'</td>
+                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:MODE_CONFIG[planMode].color }}>{r.planned}'</td>
                 </tr>
               ))}
             </tbody>
