@@ -920,6 +920,8 @@ export default function ORSimV5() {
     }, 50);
   }, [slots, procParams, matrix, customOffsets, numDays, overtimeLimit, disruptions, mcIterations]);
 
+  const handleRandomize = () => setSlots(buildRandomPlan(opsCount));
+
   const setParam = (proc, key, val) =>
     setProcParams(prev => ({ ...prev, [proc]: { ...prev[proc], [key]: val } }));
   const setOffset = (proc, val) =>
