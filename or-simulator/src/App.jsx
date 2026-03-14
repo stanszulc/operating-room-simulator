@@ -37,6 +37,10 @@ const T = {
       overruns: "Op. z przekroczeniem",
       carryOver: "Carry-over (Day+1)",
       carryOverTip: "operacje przeniesione na następny dzień",
+      startDelaySum: "Suma opoźn. startu",
+      startDelaySumTip: "łączne opóźnienie pierwszej operacji przez wszystkie dni",
+      sorTotal: "Przypadki ED (SOR)",
+      sorTotalTip: "łączna liczba nieplanowanych przypadków z SOR / ED",
     },
     tabs: {
       schedule: "1. Plan dnia",
@@ -116,12 +120,12 @@ const T = {
       title: "Symulator Sali Operacyjnej",
       close: "Kliknij gdziekolwiek poza oknem aby zamknąć",
       steps: [
-        { title: "1. Plan dnia", body: "Ustaw liczbę operacji (3–10) i liczbę dni (1–5). Przeciągnij procedury na sloty lub kliknij 'Losuj plan'. Ustaw limit nadgodzin." },
-        { title: "2. Parametry planowania", body: "Wybierz tryb: Średnia — błędne podejście. P50 — typowy czas. P80 — bezpieczny bufor." },
-        { title: "3. Rozkłady czasów realizacji", body: "Suwaki μ i σ zmieniają kształt rozkładu log-normalnego per procedura. Czerwona linia = średnia (zawyżona), pomarańczowa = P50 (typowy), zielona = P80 (bezpieczny)." },
-        { title: "4. Uruchom symulację", body: "Kliknij ▶ Uruchom. Operacje które przekroczą limit nadgodzin przechodzą na następny dzień (carry-over) — oznaczone czerwonym wypełnieniem." },
-        { title: "5. Gantt wielodniowy", body: "Każdy dzień ma osobną oś czasu. Carry-over widoczny jako jaskrawo czerwony pasek na początku następnego dnia." },
-        { title: "6. KPI", body: "Carry-over (Day+1) — ile operacji zostało przesuniętych na następny dzień łącznie przez cały okres." },
+        { title: "1. Plan dnia", body: "Ustaw liczbę operacji / dzień (3–10) i liczbę dni (1–5) suwakami w nagłówku. Przeciągnij procedury z lewej na sloty lub kliknij '🎲 Losuj plan'. Przypisz chirurga każdej operacji. Na dole możesz włączyć zakłócenia: opóźnienie startu pierwszej operacji i/lub nieplanowany przypadek z SOR." },
+        { title: "2. Parametry planowania", body: "Wybierz tryb wyznaczania planu: Średnia — błędne podejście, zawyżona przez długie operacje. P50 (mediana) — typowy czas, połowa operacji przekroczy plan. P80 — bezpieczniejszy, tylko 20% przekroczy plan. Własny — ręczna korekta per procedura." },
+        { title: "3. Rozkłady czasów realizacji", body: "Suwaki μ (mu) i σ (sigma) zmieniają kształt rozkładu log-normalnego per procedura. Czerwona linia = średnia (zawyżona), pomarańczowa = P50 (typowy), zielona = P80 (bezpieczny). Gdy zakłócenia są włączone — na dole pojawia się sekcja parametrów zakłóceń." },
+        { title: "4. Gantt (wyniki)", body: "Kliknij ▶ Uruchom w nagłówku lub w zakładce planu. Każde uruchomienie losuje nową realizację — plan pozostaje stały. Kolorowa ramka = plan, pełny pasek = rzeczywistość, czerwony = carry-over, przerywany = SOR. Opóźnienie startu widoczne jako ⏱ w nagłówku dnia." },
+        { title: "5. Błąd planowania", body: "Wykresy pokazują średni błąd planowania per chirurg i per procedura. Scatter plot — punkty powyżej przekątnej = operacja dłuższa niż plan." },
+        { title: "6. KPI", body: "Suma opóźnień, przekroczenia, efektywność i wykorzystanie sali liczone agregacyjnie przez wszystkie dni. Carry-over (Day+1) — łączna liczba operacji przesuniętych na następny dzień. Ustawienia są automatycznie zapamiętywane — odświeżenie strony nie kasuje planu." },
       ],
     },
   },
@@ -145,6 +149,10 @@ const T = {
       overruns: "Ops with overrun",
       carryOver: "Carry-over (Day+1)",
       carryOverTip: "operations moved to next day",
+      startDelaySum: "Start delay (sum)",
+      startDelaySumTip: "total first case start delay across all days",
+      sorTotal: "ED (SOR) cases",
+      sorTotalTip: "total unplanned emergency cases across all days",
     },
     tabs: {
       schedule: "1. Schedule",
@@ -224,12 +232,12 @@ const T = {
       title: "Operating Room Simulator",
       close: "Click anywhere outside to close",
       steps: [
-        { title: "1. Schedule", body: "Set ops per day (3–10) and number of days (1–5). Drag tiles onto slots or randomize. Set overtime limit." },
-        { title: "2. Planning parameters", body: "Choose mode: Mean — incorrect. P50 — typical. P80 — safe buffer." },
-        { title: "3. Distribution of realization times", body: "μ and σ sliders change the log-normal distribution shape per procedure. Red line = mean (inflated), orange = P50 (typical), green = P80 (safe)." },
-        { title: "4. Run simulation", body: "Click ▶ Run. Ops exceeding overtime limit carry over to the next day — shown in bright red." },
-        { title: "5. Multi-day Gantt", body: "Each day has its own timeline. Carry-over ops appear as bright red bars at the start of the next day." },
-        { title: "6. KPIs", body: "Carry-over (Day+1) — total ops moved to next day across the whole period." },
+        { title: "1. Schedule", body: "Set ops per day (3–10) and number of days (1–5) using the header sliders. Drag procedure tiles onto slots or click '🎲 Randomize'. Assign a surgeon to each slot. At the bottom you can enable disruptions: first case start delay and/or unplanned emergency (SOR)." },
+        { title: "2. Planning parameters", body: "Choose planning mode: Mean — incorrect approach, inflated by long ops. P50 (median) — typical time, half of ops will exceed plan. P80 — safer, only 20% will exceed. Custom — manual offset per procedure." },
+        { title: "3. Distribution of realization times", body: "μ (mu) and σ (sigma) sliders change the log-normal distribution shape per procedure. Red = mean (inflated), orange = P50 (typical), green = P80 (safe). When disruptions are enabled, a parameter section appears below." },
+        { title: "4. Gantt (results)", body: "Click ▶ Run in the header or schedule tab. Each run draws a new realization — the plan stays fixed. Colored outline = plan, solid bar = actual, red = carry-over, dashed = SOR emergency. Start delay shown as ⏱ in the day header." },
+        { title: "5. Planning bias", body: "Charts show average planning error per surgeon and procedure. Scatter plot — points above the diagonal = operation longer than planned." },
+        { title: "6. KPIs", body: "Total delay, overruns, efficiency and utilization are aggregated across all days. Carry-over (Day+1) — total ops moved to the next day. All settings are automatically saved — refreshing the page will not reset your plan." },
       ],
     },
   },
@@ -850,6 +858,8 @@ export default function ORSimV5() {
   const utilization = allRows.length
     ? (allRows.reduce((a,r)=>a+r.actual,0) / ((END-START)*numDays)) * 100 : 0;
   const totalCarryOver = days.reduce((a, d) => a + d.rows.filter(r => r.isCarryOver).length, 0);
+  const startDelaySum  = days.reduce((a, d) => a + (d.startDelay ?? 0), 0);
+  const sorTotal       = days.reduce((a, d) => a + (d.sorCount ?? 0), 0);
 
   const surgeonBias = Object.keys(SURGEON_COLORS).map(s => {
     const ops = allRows.filter(r => r.chir === s);
@@ -959,7 +969,7 @@ export default function ORSimV5() {
       )}
 
       {/* KPIs — 7 cards */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:8, marginBottom:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(9,1fr)", gap:8, marginBottom:16 }}>
         {[
           { val:`${sumDelay>0?"+":""}${sumDelay}'`, label:t.kpi.sumDelay, color:sumDelay>0?"#ff6b6b":sumDelay<0?"#6bcb77":"#888" },
           { val:`${totalDelay}'`, label:t.kpi.totalDelay, color:"#ff9f43" },
@@ -968,6 +978,8 @@ export default function ORSimV5() {
           { val:minToTime(lastEnd), label:t.kpi.lastEnd, color:overtime?"#ff6b6b":"#6bcb77" },
           { val:`${allRows.filter(r=>r.delay>0).length}/${allRows.length}`, label:t.kpi.overruns, color:"#a78bfa" },
           { val:`${totalCarryOver}`, label:t.kpi.carryOver, color:totalCarryOver>0?"#ff2244":"#6bcb77", tip:t.kpi.carryOverTip },
+          { val:`${startDelaySum}'`, label:t.kpi.startDelaySum, color:startDelaySum>0?"#ff9f43":"#555", tip:t.kpi.startDelaySumTip },
+          { val:`${sorTotal}`, label:t.kpi.sorTotal, color:sorTotal>0?"#ff2244":"#555", tip:t.kpi.sorTotalTip },
         ].map(({ val, label, color, tip }) => (
           <div key={label} className="card" title={tip??""}>
             <div className="kpi-val" style={{ color }}>{val}</div>
