@@ -765,29 +765,47 @@ function MultiDayGantt({ days, planColor, t }) {
   );
 }
 
+// ── localStorage hook ─────────────────────────────────────────────────────
+function useLocalStorage(key, defaultValue) {
+  const [value, setValue] = useState(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored !== null ? JSON.parse(stored) : defaultValue;
+    } catch { return defaultValue; }
+  });
+  const setStored = (val) => {
+    setValue(prev => {
+      const next = typeof val === "function" ? val(prev) : val;
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+  return [value, setStored];
+}
+
 // ── main ──────────────────────────────────────────────────────────────────
 export default function ORSimV5() {
-  const [procParams, setProcParams] = useState(DEFAULT_PROC_PARAMS);
-  const [planMode, setPlanMode] = useState("mean");
-  const [customOffsets, setCustomOffsets] = useState({ Appendectomy:0, Cholecystectomy:0, "Hernia Repair":0 });
+  const [procParams, setProcParams]     = useLocalStorage("or_procParams", DEFAULT_PROC_PARAMS);
+  const [planMode, setPlanMode]         = useLocalStorage("or_planMode", "mean");
+  const [customOffsets, setCustomOffsets] = useLocalStorage("or_offsets", { Appendectomy:0, Cholecystectomy:0, "Hernia Repair":0 });
+  const [lang, setLang]                 = useLocalStorage("or_lang", "pl");
+  const [numDays, setNumDays]           = useLocalStorage("or_numDays", 3);
+  const [overtimeLimit, setOvertimeLimit] = useLocalStorage("or_overtime", 60);
+  const [opsCount, setOpsCount]         = useLocalStorage("or_opsCount", 6);
+  const [slots, setSlots]               = useLocalStorage("or_slots", buildRandomPlan(6));
+
+  // disruption state
+  const [enableDelay, setEnableDelay]   = useLocalStorage("or_enableDelay", false);
+  const [delayOnTime, setDelayOnTime]   = useLocalStorage("or_delayOnTime", 0.7);
+  const [delayMean, setDelayMean]       = useLocalStorage("or_delayMean", 20);
+  const [enableSor, setEnableSor]       = useLocalStorage("or_enableSor", false);
+  const [sorLambda, setSorLambda]       = useLocalStorage("or_sorLambda", 1);
+  const [sorDuration, setSorDuration]   = useLocalStorage("or_sorDuration", 60);
+  const [sorPriority, setSorPriority]   = useLocalStorage("or_sorPriority", "end");
+
   const [runs, setRuns] = useState(0);
   const [activeTab, setActiveTab] = useState("schedule");
   const [showHelp, setShowHelp] = useState(false);
-  const [lang, setLang] = useState("pl");
-  const [numDays, setNumDays] = useState(3);
-  const [overtimeLimit, setOvertimeLimit] = useState(60);
-
-  // disruption state
-  const [enableDelay, setEnableDelay] = useState(false);
-  const [delayOnTime, setDelayOnTime] = useState(0.7);   // 70% on time
-  const [delayMean, setDelayMean]     = useState(20);    // 20 min avg delay
-  const [enableSor, setEnableSor]     = useState(false);
-  const [sorLambda, setSorLambda]     = useState(1);     // 1 case/day avg
-  const [sorDuration, setSorDuration] = useState(60);    // 60 min avg
-  const [sorPriority, setSorPriority] = useState("end"); // "preempt" | "end"
-
-  const [opsCount, setOpsCount] = useState(6);
-  const [slots, setSlots] = useState(() => buildRandomPlan(6));
 
   const t = T[lang];
   const matrix = useMemo(() => generateHistory(procParams), [procParams]);
