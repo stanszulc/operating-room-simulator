@@ -418,15 +418,15 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
 
       const startReal = Math.max(tReal, START);
       const endReal = startReal + actual;
+      const startPlan = tPlan;
+      const endPlan = startPlan + planned;
 
-      if (overflowed || endReal > HARD_END) {
+      // carry-over if: already overflowed, OR planned end exceeds limit, OR actual end exceeds limit
+      if (overflowed || endPlan > HARD_END || endReal > HARD_END) {
         overflowed = true;
         carryQueue.push({ proc: op.proc, chir: op.chir, planId: op.planId });
         continue;
       }
-
-      const startPlan = tPlan;
-      const endPlan = startPlan + planned;
 
       rows.push({
         id: rows.length + 1,
