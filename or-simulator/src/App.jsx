@@ -884,10 +884,7 @@ export default function ORSimV5() {
 
     // run async to allow UI to update
     setTimeout(() => {
-      const modes = ["mean", "p50", "p80"];
-      // include custom only if any offset != 0
-      const hasCustom = Object.values(customOffsets).some(v => v !== 0);
-      if (hasCustom) modes.push("custom");
+      const modes = ["mean", "p50", "p80", "custom"];
 
       const results = {};
       for (const mode of modes) {
