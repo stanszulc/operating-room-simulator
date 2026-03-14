@@ -41,7 +41,7 @@ const T = {
     tabs: {
       schedule: "1. Plan dnia",
       planning: "2. Parametry planowania",
-      params:   "3. Rozkłady",
+      params:   "3. Rozkłady czasów realizacji",
       gantt:    "4. Gantt (wyniki)",
       bias:     "5. Błąd planowania",
       matrix:   "6. Macierz P50/P80",
@@ -105,9 +105,10 @@ const T = {
       steps: [
         { title: "1. Plan dnia", body: "Ustaw liczbę operacji (3–10) i liczbę dni (1–5). Przeciągnij procedury na sloty lub kliknij 'Losuj plan'. Ustaw limit nadgodzin." },
         { title: "2. Parametry planowania", body: "Wybierz tryb: Średnia — błędne podejście. P50 — typowy czas. P80 — bezpieczny bufor." },
-        { title: "3. Uruchom symulację", body: "Kliknij ▶ Uruchom. Operacje które przekroczą limit nadgodzin przechodzą na następny dzień (carry-over) — oznaczone czerwonym wypełnieniem." },
-        { title: "4. Gantt wielodniowy", body: "Każdy dzień ma osobną oś czasu. Carry-over widoczny jako jaskrawo czerwony pasek na początku następnego dnia." },
-        { title: "5. KPI", body: "Carry-over (Day+1) — ile operacji zostało przesuniętych na następny dzień łącznie przez cały okres." },
+        { title: "3. Rozkłady czasów realizacji", body: "Suwaki μ i σ zmieniają kształt rozkładu log-normalnego per procedura. Czerwona linia = średnia (zawyżona), pomarańczowa = P50 (typowy), zielona = P80 (bezpieczny)." },
+        { title: "4. Uruchom symulację", body: "Kliknij ▶ Uruchom. Operacje które przekroczą limit nadgodzin przechodzą na następny dzień (carry-over) — oznaczone czerwonym wypełnieniem." },
+        { title: "5. Gantt wielodniowy", body: "Każdy dzień ma osobną oś czasu. Carry-over widoczny jako jaskrawo czerwony pasek na początku następnego dnia." },
+        { title: "6. KPI", body: "Carry-over (Day+1) — ile operacji zostało przesuniętych na następny dzień łącznie przez cały okres." },
       ],
     },
   },
@@ -135,7 +136,7 @@ const T = {
     tabs: {
       schedule: "1. Schedule",
       planning: "2. Planning params",
-      params:   "3. Distributions",
+      params:   "3. Distribution of realization times",
       gantt:    "4. Gantt (results)",
       bias:     "5. Planning bias",
       matrix:   "6. P50/P80 Matrix",
@@ -199,9 +200,10 @@ const T = {
       steps: [
         { title: "1. Schedule", body: "Set ops per day (3–10) and number of days (1–5). Drag tiles onto slots or randomize. Set overtime limit." },
         { title: "2. Planning parameters", body: "Choose mode: Mean — incorrect. P50 — typical. P80 — safe buffer." },
-        { title: "3. Run simulation", body: "Click ▶ Run. Ops exceeding overtime limit carry over to the next day — shown in bright red." },
-        { title: "4. Multi-day Gantt", body: "Each day has its own timeline. Carry-over ops appear as bright red bars at the start of the next day." },
-        { title: "5. KPIs", body: "Carry-over (Day+1) — total ops moved to next day across the whole period." },
+        { title: "3. Distribution of realization times", body: "μ and σ sliders change the log-normal distribution shape per procedure. Red line = mean (inflated), orange = P50 (typical), green = P80 (safe)." },
+        { title: "4. Run simulation", body: "Click ▶ Run. Ops exceeding overtime limit carry over to the next day — shown in bright red." },
+        { title: "5. Multi-day Gantt", body: "Each day has its own timeline. Carry-over ops appear as bright red bars at the start of the next day." },
+        { title: "6. KPIs", body: "Carry-over (Day+1) — total ops moved to next day across the whole period." },
       ],
     },
   },
@@ -802,10 +804,9 @@ export default function ORSimV5() {
             {t.helpModal.steps.map(({ title, body }, i) => (
               <div key={i} style={{ marginBottom:18 }}>
                 <div style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:6 }}>
-                  <span style={{ background:"#e07b39", color:"#fff", borderRadius:"50%", width:20, height:20, display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, flexShrink:0 }}>{i+1}</span>
                   <span style={{ fontSize:13, fontWeight:700, color:"#e0d8cc" }}>{title}</span>
                 </div>
-                <div style={{ fontSize:12, color:"#666", lineHeight:1.7, paddingLeft:30 }}>{body}</div>
+                <div style={{ fontSize:12, color:"#666", lineHeight:1.7 }}>{body}</div>
               </div>
             ))}
             <div style={{ borderTop:"1px solid #1e1e2a", paddingTop:14, marginTop:4, fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", textAlign:"center" }}>{t.helpModal.close}</div>
