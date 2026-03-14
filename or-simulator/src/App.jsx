@@ -47,8 +47,7 @@ const T = {
       planning: "2. Parametry planowania",
       params:   "3. Rozkłady czasów realizacji",
       gantt:    "4. Gantt (wyniki)",
-      bias:     "5. Błąd planowania",
-      matrix:   "6. Macierz P50/P80",
+      monte:    "5. Analiza Monte Carlo",
     },
     schedule: {
       title: "Zbuduj plan operacyjny",
@@ -115,8 +114,23 @@ const T = {
       sorPriorityOptions: ["Wyprzedza planowe", "Na koniec dnia"],
       disruptOff: "Zakłócenia wyłączone — włącz w zakładce 1",
     },
-    helpModal: {
-      label: "Instrukcja obsługi",
+    monte: {
+      title: "Analiza Monte Carlo — porównanie strategii planowania",
+      iterLabel: "Liczba iteracji",
+      runBtn: "▶ Uruchom analizę",
+      running: "Liczenie...",
+      iterations: "iteracji",
+      overtimeRate: "% dni z nadgodzinami",
+      carryOverRate: "% dni z carry-over",
+      avgDelay: "Średnie opóźnienie (min)",
+      p80Delay: "P80 opóźnienia (min)",
+      avgEnd: "Średni koniec dnia",
+      modes: { mean: "Średnia", p50: "P50", p80: "P80", custom: "Własny" },
+      histTitle: "Rozkład godziny końca dnia",
+      summaryTitle: "Podsumowanie — 4 strategie planowania",
+      headers: ["Strategia", "% nadgodzin", "% carry-over", "Śr. opóźnienie", "P80 opóźnienia", "Śr. koniec"],
+      hint: "Zamrożony plan · różne realizacje losowe",
+    },
       title: "Symulator Sali Operacyjnej",
       close: "Kliknij gdziekolwiek poza oknem aby zamknąć",
       steps: [
@@ -159,8 +173,7 @@ const T = {
       planning: "2. Planning params",
       params:   "3. Distribution of realization times",
       gantt:    "4. Gantt (results)",
-      bias:     "5. Planning bias",
-      matrix:   "6. P50/P80 Matrix",
+      monte:    "5. Monte Carlo Analysis",
     },
     schedule: {
       title: "Build the operating schedule",
@@ -227,8 +240,23 @@ const T = {
       sorPriorityOptions: ["Preempts scheduled ops", "Added at end of day"],
       disruptOff: "Disruptions disabled — enable in tab 1",
     },
-    helpModal: {
-      label: "User guide",
+    monte: {
+      title: "Monte Carlo Analysis — planning strategy comparison",
+      iterLabel: "Number of iterations",
+      runBtn: "▶ Run analysis",
+      running: "Computing...",
+      iterations: "iterations",
+      overtimeRate: "% days with overtime",
+      carryOverRate: "% days with carry-over",
+      avgDelay: "Avg delay (min)",
+      p80Delay: "P80 delay (min)",
+      avgEnd: "Avg end of day",
+      modes: { mean: "Mean", p50: "P50", p80: "P80", custom: "Custom" },
+      histTitle: "Distribution of end-of-day time",
+      summaryTitle: "Summary — 4 planning strategies",
+      headers: ["Strategy", "% overtime", "% carry-over", "Avg delay", "P80 delay", "Avg end"],
+      hint: "Frozen plan · random realizations",
+    },
       title: "Operating Room Simulator",
       close: "Click anywhere outside to close",
       steps: [
@@ -840,7 +868,53 @@ export default function ORSimV5() {
     setDays(simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions));
   };
 
-  const handleRandomize = () => setSlots(buildRandomPlan(opsCount));
+  const [mcIterations, setMcIterations] = useLocalStorage("or_mcIter", 500);
+  const [mcResults, setMcResults] = useState(null);
+  const [mcRunning, setMcRunning] = useState(false);
+
+  const runMonteCarlo = useCallback(() => {
+    const validPlan = slots.filter(s => s.proc !== null);
+    if (validPlan.length === 0) return;
+    setMcRunning(true);
+    setMcResults(null);
+
+    // run async to allow UI to update
+    setTimeout(() => {
+      const modes = ["mean", "p50", "p80"];
+      // include custom only if any offset != 0
+      const hasCustom = Object.values(customOffsets).some(v => v !== 0);
+      if (hasCustom) modes.push("custom");
+
+      const results = {};
+      for (const mode of modes) {
+        const endTimes = [], delays = [], overtimeDays = [], carryDays = [];
+        for (let i = 0; i < mcIterations; i++) {
+          const sim = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
+          const allR = sim.flatMap(d => d.rows);
+          const lastE = sim.at(-1)?.lastEnd ?? END;
+          const totalD = allR.reduce((a, r) => a + Math.max(0, r.delay), 0);
+          const hasOT = sim.some(d => d.lastEnd > END);
+          const hasCO = sim.some(d => d.carryOverCount > 0);
+          endTimes.push(lastE);
+          delays.push(totalD);
+          overtimeDays.push(hasOT ? 1 : 0);
+          carryDays.push(hasCO ? 1 : 0);
+        }
+        endTimes.sort((a, b) => a - b);
+        delays.sort((a, b) => a - b);
+        results[mode] = {
+          overtimeRate: Math.round(overtimeDays.reduce((a,b)=>a+b,0) / mcIterations * 100),
+          carryOverRate: Math.round(carryDays.reduce((a,b)=>a+b,0) / mcIterations * 100),
+          avgDelay: Math.round(delays.reduce((a,b)=>a+b,0) / mcIterations),
+          p80Delay: delays[Math.floor(mcIterations * 0.8)],
+          avgEnd: Math.round(endTimes.reduce((a,b)=>a+b,0) / mcIterations),
+          endTimes, // for histogram
+        };
+      }
+      setMcResults(results);
+      setMcRunning(false);
+    }, 50);
+  }, [slots, procParams, matrix, customOffsets, numDays, overtimeLimit, disruptions, mcIterations]);
 
   const setParam = (proc, key, val) =>
     setProcParams(prev => ({ ...prev, [proc]: { ...prev[proc], [key]: val } }));
@@ -1353,70 +1427,146 @@ export default function ORSimV5() {
         </div>
       )}
 
-      {/* ── BIAS tab ── */}
-      {activeTab === "bias" && (
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+      {/* ── MONTE CARLO tab ── */}
+      {activeTab === "monte" && (
+        <div style={{ display:"grid", gap:14 }}>
+          {/* controls */}
           <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.bias.bySurgeon}</div>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={surgeonBias} margin={{ top:4,right:4,bottom:0,left:-10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
-                <XAxis dataKey="surg" tick={{ fontSize:11, fill:"#666" }} />
-                <YAxis tick={{ fontSize:10, fill:"#555" }} />
-                <ReferenceLine y={0} stroke="#333" strokeWidth={1.5} />
-                <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:12 }} formatter={v=>[`${v>0?"+":""}${v} min`,t.bias.avgDelta]} />
-                <Bar dataKey="bias" radius={[4,4,0,0]}>{surgeonBias.map((e,i)=><Cell key={i} fill={e.fill} />)}</Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+              marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
+              {t.monte.title}
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, flex:1, minWidth:260 }}>
+                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.monte.iterLabel}:</span>
+                <input type="range" min={100} max={1000} step={100} value={mcIterations}
+                  onChange={e => setMcIterations(parseInt(e.target.value))}
+                  style={{ flex:1, accentColor:"#a78bfa", cursor:"pointer" }} />
+                <span style={{ fontSize:14, fontWeight:700, color:"#a78bfa",
+                  fontFamily:"'JetBrains Mono',monospace", minWidth:40 }}>{mcIterations}</span>
+              </div>
+              <button onClick={runMonteCarlo} disabled={mcRunning} style={{
+                padding:"10px 28px", background: mcRunning ? "#1a1a24" : "linear-gradient(135deg,#a78bfa,#7c5cdb)",
+                color: mcRunning ? "#555" : "#fff", border:"none", borderRadius:8,
+                fontSize:13, fontWeight:700, cursor: mcRunning ? "not-allowed" : "pointer",
+                fontFamily:"'Syne',sans-serif",
+              }}>
+                {mcRunning ? t.monte.running : t.monte.runBtn}
+              </button>
+              <span style={{ fontSize:10, color:"#333", fontFamily:"'JetBrains Mono',monospace" }}>
+                {t.monte.hint}
+              </span>
+            </div>
           </div>
-          <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.bias.byProc}</div>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={procBias} margin={{ top:4,right:4,bottom:0,left:-10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
-                <XAxis dataKey="proc" tick={{ fontSize:11, fill:"#666" }} />
-                <YAxis tick={{ fontSize:10, fill:"#555" }} />
-                <ReferenceLine y={0} stroke="#333" strokeWidth={1.5} />
-                <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:12 }} formatter={v=>[`${v>0?"+":""}${v} min`,t.bias.avgDelta]} />
-                <Bar dataKey="bias" radius={[4,4,0,0]} fill="#4a9eff" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="card" style={{ gridColumn:"1/-1" }}>
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.bias.scatter}</div>
-            <ResponsiveContainer width="100%" height={200}>
-              <ScatterChart margin={{ top:4,right:4,bottom:0,left:-10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
-                <XAxis dataKey="planned" name="Plan" type="number" tick={{ fontSize:10, fill:"#555" }} label={{ value:"Plan (min)", position:"insideBottom", offset:-2, fill:"#444", fontSize:10 }} />
-                <YAxis dataKey="actual"  name="Actual" type="number" tick={{ fontSize:10, fill:"#555" }} label={{ value:"Actual (min)", angle:-90, position:"insideLeft", fill:"#444", fontSize:10 }} />
-                <ReferenceLine segment={[{x:30,y:30},{x:130,y:130}]} stroke="#333" strokeDasharray="4 2" label={{ value:t.bias.idealPlan, fill:"#333", fontSize:9 }} />
-                <Tooltip cursor={{ strokeDasharray:"3 3" }} contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:11 }} formatter={(v,n,p)=>[`${p.payload.actual} min`,p.payload.name]} />
-                <Scatter data={scatterData}>{scatterData.map((e,i)=><Cell key={i} fill={e.fill} />)}</Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
 
-      {/* ── MATRIX tab ── */}
-      {activeTab === "matrix" && (
-        <div className="card">
-          <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.matrix.title}</div>
-          <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead><tr>{t.matrix.headers.map(h=><th key={h}>{h}</th>)}</tr></thead>
-            <tbody>
-              {matrixRows.map((r,i) => (
-                <tr key={i}>
-                  <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
-                  <td style={{ color:"#888", fontSize:11 }}>{r.proc}</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
-                  <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:MODE_CONFIG[planMode].color }}>{r.planned}'</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {mcRunning && (
+            <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
+              fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+              ⏳ {lang==="pl" ? `Liczę ${mcIterations} iteracji × 4 strategie...` : `Computing ${mcIterations} iterations × 4 strategies...`}
+            </div>
+          )}
+
+          {mcResults && !mcRunning && (() => {
+            const modeKeys = Object.keys(mcResults);
+            const COLORS = { mean:"#ff6b6b", p50:"#e07b39", p80:"#6bcb77", custom:"#a78bfa" };
+
+            // build histogram data — bucket end times into 15-min bins
+            const bins = {};
+            for (let m = START; m <= END + 120; m += 15) bins[m] = { time: minToTime(m) };
+            modeKeys.forEach(mode => {
+              mcResults[mode].endTimes.forEach(et => {
+                const bucket = Math.floor(et / 15) * 15;
+                if (!bins[bucket]) bins[bucket] = { time: minToTime(bucket) };
+                bins[bucket][mode] = (bins[bucket][mode] ?? 0) + 1;
+              });
+            });
+            const histData = Object.values(bins).filter(b =>
+              modeKeys.some(m => b[m] > 0)
+            );
+
+            return (
+              <>
+                {/* summary table */}
+                <div className="card">
+                  <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+                    marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {t.monte.summaryTitle} · {mcIterations} {t.monte.iterations}
+                  </div>
+                  <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                    <thead><tr>{t.monte.headers.map(h=><th key={h}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {modeKeys.map(mode => {
+                        const r = mcResults[mode];
+                        const color = COLORS[mode];
+                        return (
+                          <tr key={mode}>
+                            <td><span style={{ color, fontWeight:700, fontSize:13 }}>
+                              {t.monte.modes[mode]}
+                            </span></td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: r.overtimeRate > 50 ? "#ff6b6b" : r.overtimeRate > 20 ? "#e0c039" : "#6bcb77",
+                              fontWeight:600 }}>{r.overtimeRate}%</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: r.carryOverRate > 30 ? "#ff2244" : r.carryOverRate > 10 ? "#ff9f43" : "#6bcb77",
+                              fontWeight:600 }}>{r.carryOverRate}%</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#888" }}>{r.avgDelay}'</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43" }}>{r.p80Delay}'</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: r.avgEnd > END ? "#ff6b6b" : "#6bcb77" }}>{minToTime(r.avgEnd)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* histogram */}
+                <div className="card">
+                  <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+                    marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {t.monte.histTitle}
+                  </div>
+                  {/* legend */}
+                  <div style={{ display:"flex", gap:16, marginBottom:12, flexWrap:"wrap" }}>
+                    {modeKeys.map(mode => (
+                      <span key={mode} style={{ display:"flex", alignItems:"center", gap:6, fontSize:11 }}>
+                        <span style={{ background:COLORS[mode], width:12, height:12, borderRadius:2, display:"inline-block" }} />
+                        <span style={{ color:COLORS[mode], fontWeight:600 }}>{t.monte.modes[mode]}</span>
+                      </span>
+                    ))}
+                    <span style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:"#ff6b6b" }}>
+                      <span style={{ borderLeft:"2px dashed #ff6b6b", height:12, display:"inline-block" }} />
+                      {lang==="pl" ? "16:00 koniec dnia" : "16:00 end of day"}
+                    </span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={histData} margin={{ top:4, right:4, bottom:20, left:-10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
+                      <XAxis dataKey="time" tick={{ fontSize:9, fill:"#555" }} interval={3}
+                        label={{ value: lang==="pl"?"Godzina końca":"End time", position:"insideBottom", offset:-12, fill:"#444", fontSize:10 }} />
+                      <YAxis tick={{ fontSize:9, fill:"#555" }}
+                        label={{ value: lang==="pl"?"Liczba iteracji":"Count", angle:-90, position:"insideLeft", fill:"#444", fontSize:10 }} />
+                      <ReferenceLine x={minToTime(END)} stroke="#ff6b6b" strokeDasharray="4 2" strokeWidth={2} />
+                      <Tooltip contentStyle={{ background:"#1a1a28", border:"1px solid #2a2a3a", borderRadius:6, fontSize:11 }}
+                        formatter={(v, name) => [v, t.monte.modes[name] ?? name]} />
+                      {modeKeys.map(mode => (
+                        <Bar key={mode} dataKey={mode} fill={COLORS[mode]} opacity={0.75} radius={[2,2,0,0]} />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </>
+            );
+          })()}
+
+          {!mcResults && !mcRunning && (
+            <div className="card" style={{ textAlign:"center", padding:"32px", color:"#333",
+              fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+              {lang==="pl"
+                ? `Kliknij "▶ Uruchom analizę" aby porównać 4 strategie planowania na ${mcIterations} losowych realizacjach`
+                : `Click "▶ Run analysis" to compare 4 planning strategies across ${mcIterations} random realizations`}
+            </div>
+          )}
         </div>
       )}
     </div>
