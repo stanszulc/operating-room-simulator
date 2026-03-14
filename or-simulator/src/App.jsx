@@ -922,7 +922,7 @@ export default function ORSimV5() {
           p80Delay: delays[Math.floor(mcIterations * 0.8)],
           avgEnd: Math.round(endTimes.reduce((a,b)=>a+b,0) / mcIterations),
           avgOvertimeMin: Math.round(overtimeMins.reduce((a,b)=>a+b,0) / mcIterations),
-          avgCarryOver: Math.round(carryOvers.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
+          avgCarryOver: Math.round(carryOvers.reduce((a,b)=>a+b,0) / mcIterations / numDays * 10) / 10,
           worstEnd: Math.max(...endTimes),
           avgEfficiency: Math.round(efficiencies.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
           avgUtilization: Math.round(utilizations.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
