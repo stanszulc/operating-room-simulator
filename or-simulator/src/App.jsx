@@ -131,6 +131,8 @@ const T = {
       headers: ["Strategia", "% nadgodzin", "% carry-over", "Śr. opóźnienie", "P80 opóźnienia", "Śr. koniec"],
       hint: "Zamrożony plan · różne realizacje losowe",
     },
+    helpModal: {
+      label: "Instrukcja obsługi",
       title: "Symulator Sali Operacyjnej",
       close: "Kliknij gdziekolwiek poza oknem aby zamknąć",
       steps: [
@@ -257,6 +259,8 @@ const T = {
       headers: ["Strategy", "% overtime", "% carry-over", "Avg delay", "P80 delay", "Avg end"],
       hint: "Frozen plan · random realizations",
     },
+    helpModal: {
+      label: "User guide",
       title: "Operating Room Simulator",
       close: "Click anywhere outside to close",
       steps: [
