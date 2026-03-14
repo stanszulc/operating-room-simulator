@@ -4,14 +4,15 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 
 const START = 8 * 60, END = 16 * 60, PREP = 15, SIM_HISTORY = 200;
 const SURGEON_COLORS = { A: "#e07b39", B: "#4a9eff", C: "#a78bfa" };
-const PROC_COLORS = { Appendectomy: "#e07b39", Cholecystectomy: "#4a9eff", "Hernia Repair": "#a78bfa" };
+const PROC_COLORS = { Appendectomy: "#e07b39", Cholecystectomy: "#4a9eff", "Hernia Repair": "#a78bfa", "Major Surgery": "#ff2244" };
 const SURGEONS = ["A", "B", "C"];
-const PROCS = ["Appendectomy", "Cholecystectomy", "Hernia Repair"];
+const PROCS = ["Appendectomy", "Cholecystectomy", "Hernia Repair", "Major Surgery"];
 
 const DEFAULT_PROC_PARAMS = {
   Appendectomy:    { mu: 4.06, sigma: 0.28 },
   Cholecystectomy: { mu: 4.28, sigma: 0.32 },
   "Hernia Repair": { mu: 3.91, sigma: 0.26 },
+  "Major Surgery": { mu: 5.00, sigma: 0.40 },
 };
 const SURGEON_SKILL = { A: 0.92, B: 1.10, C: 1.00 };
 
@@ -827,7 +828,7 @@ function useLocalStorage(key, defaultValue) {
 export default function ORSimV5() {
   const [procParams, setProcParams]     = useLocalStorage("or_procParams", DEFAULT_PROC_PARAMS);
   const [planMode, setPlanMode]         = useLocalStorage("or_planMode", "mean");
-  const [customOffsets, setCustomOffsets] = useLocalStorage("or_offsets", { Appendectomy:0, Cholecystectomy:0, "Hernia Repair":0 });
+  const [customOffsets, setCustomOffsets] = useLocalStorage("or_offsets", { Appendectomy:0, Cholecystectomy:0, "Hernia Repair":0, "Major Surgery":0 });
   const [lang, setLang]                 = useLocalStorage("or_lang", "pl");
   const [numDays, setNumDays]           = useLocalStorage("or_numDays", 3);
   const [overtimeLimit, setOvertimeLimit] = useLocalStorage("or_overtime", 60);
