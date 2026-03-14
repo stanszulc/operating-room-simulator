@@ -874,6 +874,8 @@ export default function ORSimV5() {
   };
 
   const [mcIterations, setMcIterations] = useLocalStorage("or_mcIter", 500);
+  const [revenuePerMin, setRevenuePerMin] = useLocalStorage("or_revenue", 160); // zł/min
+  const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 10); // 600zł/h = 10zł/min
   const [mcResults, setMcResults] = useState(null);
   const [mcRunning, setMcRunning] = useState(false);
 
@@ -890,7 +892,7 @@ export default function ORSimV5() {
       const results = {};
       for (const mode of modes) {
         const endTimes = [], delays = [], overtimeDays = [], carryDays = [];
-        const overtimeMins = [], carryOvers = [], efficiencies = [], utilizations = [], opsMins = [];
+        const overtimeMins = [], carryOvers = [], efficiencies = [], utilizations = [], opsMins = [], financials = [];
         for (let i = 0; i < mcIterations; i++) {
           const sim = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
           const allR = sim.flatMap(d => d.rows);
@@ -905,6 +907,8 @@ export default function ORSimV5() {
           const util = allR.length
             ? (allR.reduce((a,r)=>a+r.actual,0) / ((END-START)*numDays)) * 100 : 0;
           const opsMin = allR.length ? Math.round(allR.reduce((a,r)=>a+r.actual,0) / numDays) : 0;
+          const totalOpsMinAll = allR.reduce((a,r)=>a+r.actual,0);
+          const financial = Math.round((totalOpsMinAll * revenuePerMin - totalOTMin * overtimeCostPerMin) / numDays);
           endTimes.push(lastE);
           delays.push(totalD);
           overtimeDays.push(hasOT ? 1 : 0);
@@ -914,6 +918,7 @@ export default function ORSimV5() {
           efficiencies.push(eff);
           utilizations.push(util);
           opsMins.push(opsMin);
+          financials.push(financial);
         }
         endTimes.sort((a, b) => a - b);
         delays.sort((a, b) => a - b);
@@ -929,6 +934,7 @@ export default function ORSimV5() {
           avgEfficiency: Math.round(efficiencies.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
           avgUtilization: Math.round(utilizations.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
           avgOpsMin: Math.round(opsMins.reduce((a,b)=>a+b,0) / mcIterations),
+          avgFinancial: Math.round(financials.reduce((a,b)=>a+b,0) / mcIterations),
           endTimes,
         };
       }
@@ -1480,6 +1486,30 @@ export default function ORSimV5() {
                 {t.monte.hint}
               </span>
             </div>
+            {/* financial params */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:14,
+              borderTop:"1px solid #1e1e2a", paddingTop:14 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>
+                  {lang==="pl" ? "Przychód sali (zł/min):" : "Revenue (zł/min):"}
+                </span>
+                <input type="range" min={50} max={300} step={10} value={revenuePerMin}
+                  onChange={e => setRevenuePerMin(parseInt(e.target.value))}
+                  style={{ flex:1, accentColor:"#6bcb77", cursor:"pointer" }} />
+                <span style={{ fontSize:13, fontWeight:700, color:"#6bcb77",
+                  fontFamily:"'JetBrains Mono',monospace", minWidth:48 }}>{revenuePerMin} zł</span>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>
+                  {lang==="pl" ? "Koszt nadgodzin (zł/h):" : "Overtime cost (zł/h):"}
+                </span>
+                <input type="range" min={200} max={1200} step={50} value={overtimeCostPerMin * 60}
+                  onChange={e => setOvertimeCostPerMin(parseInt(e.target.value) / 60)}
+                  style={{ flex:1, accentColor:"#ff6b6b", cursor:"pointer" }} />
+                <span style={{ fontSize:13, fontWeight:700, color:"#ff6b6b",
+                  fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{overtimeCostPerMin * 60} zł</span>
+              </div>
+            </div>
           </div>
 
           {mcRunning && (
@@ -1518,8 +1548,8 @@ export default function ORSimV5() {
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead><tr>
                       {(lang==="pl"
-                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","Min op. śr./dzień","Efektywność sali","Wykorzystanie sali","Najgorszy dzień"]
-                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","Avg op. min/day","Room efficiency","Room utilization","Worst day"]
+                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","Min op. śr./dzień","Efektywność sali","Wykorzystanie sali","Wynik śr./dzień (zł)","Najgorszy dzień"]
+                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","Avg op. min/day","Room efficiency","Room utilization","Avg result/day (zł)","Worst day"]
                       ).map(h=><th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
@@ -1552,6 +1582,10 @@ export default function ORSimV5() {
                             <td style={{ fontFamily:"'JetBrains Mono',monospace",
                               color: r.avgUtilization>=75?"#6bcb77":r.avgUtilization>=60?"#e0c039":"#ff6b6b" }}>
                               {r.avgUtilization}%
+                            </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
+                              color:"#6bcb77", fontSize:13 }}>
+                              {r.avgFinancial.toLocaleString()} zł
                             </td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>
                               {minToTime(r.worstEnd)}
@@ -1676,6 +1710,16 @@ export default function ORSimV5() {
                               fontFamily:"'JetBrains Mono',monospace" }}>{minToTime(r.worstEnd)}</div>
                             <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
                               {lang==="pl" ? "najgorszy dzień" : "worst day"}
+                            </div>
+                          </div>
+                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px",
+                            gridColumn:"1/-1" }}>
+                            <div style={{ fontSize:16, fontWeight:700, color:"#6bcb77",
+                              fontFamily:"'JetBrains Mono',monospace" }}>
+                              {r.avgFinancial.toLocaleString()} zł
+                            </div>
+                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                              {lang==="pl" ? "śr. wynik/dzień" : "avg result/day"}
                             </div>
                           </div>
                         </div>
