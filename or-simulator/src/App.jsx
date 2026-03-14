@@ -831,7 +831,7 @@ export default function ORSimV5() {
   const [customOffsets, setCustomOffsets] = useLocalStorage("or_offsets", { Appendectomy:0, Cholecystectomy:0, "Hernia Repair":0, "Major Surgery":0 });
   const [lang, setLang]                 = useLocalStorage("or_lang", "pl");
   const [numDays, setNumDays]           = useLocalStorage("or_numDays", 3);
-  const [overtimeLimit, setOvertimeLimit] = useLocalStorage("or_overtime", 60);
+  const [overtimeLimit, setOvertimeLimit] = useLocalStorage("or_overtime", 240);
   const [opsCount, setOpsCount]         = useLocalStorage("or_opsCount", 6);
   const [slots, setSlots]               = useLocalStorage("or_slots", buildRandomPlan(6));
 
@@ -890,7 +890,7 @@ export default function ORSimV5() {
       const results = {};
       for (const mode of modes) {
         const endTimes = [], delays = [], overtimeDays = [], carryDays = [];
-        const overtimeMins = [], carryOvers = [], efficiencies = [], utilizations = [];
+        const overtimeMins = [], carryOvers = [], efficiencies = [], utilizations = [], opsMins = [];
         for (let i = 0; i < mcIterations; i++) {
           const sim = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
           const allR = sim.flatMap(d => d.rows);
@@ -898,12 +898,13 @@ export default function ORSimV5() {
           const totalD = allR.reduce((a, r) => a + Math.max(0, r.delay), 0);
           const hasOT = sim.some(d => d.lastEnd > END);
           const hasCO = sim.some(d => d.carryOverCount > 0);
-          const totalCO = sim.reduce((a, d) => a + d.carryOverCount, 0);
+          const totalCO = sim.slice(0, -1).reduce((a, d) => a + d.carryOverCount, 0);
           const totalOTMin = sim.reduce((a, d) => a + Math.max(0, d.lastEnd - END), 0);
           const eff = allR.length
             ? ((allR.reduce((a,r)=>a+r.actual,0) + PREP*(allR.length-1)) / ((END-START)*numDays)) * 100 : 0;
           const util = allR.length
             ? (allR.reduce((a,r)=>a+r.actual,0) / ((END-START)*numDays)) * 100 : 0;
+          const opsMin = allR.length ? Math.round(allR.reduce((a,r)=>a+r.actual,0) / numDays) : 0;
           endTimes.push(lastE);
           delays.push(totalD);
           overtimeDays.push(hasOT ? 1 : 0);
@@ -912,6 +913,7 @@ export default function ORSimV5() {
           carryOvers.push(totalCO);
           efficiencies.push(eff);
           utilizations.push(util);
+          opsMins.push(opsMin);
         }
         endTimes.sort((a, b) => a - b);
         delays.sort((a, b) => a - b);
@@ -922,10 +924,11 @@ export default function ORSimV5() {
           p80Delay: delays[Math.floor(mcIterations * 0.8)],
           avgEnd: Math.round(endTimes.reduce((a,b)=>a+b,0) / mcIterations),
           avgOvertimeMin: Math.round(overtimeMins.reduce((a,b)=>a+b,0) / mcIterations),
-          avgCarryOver: Math.round(carryOvers.reduce((a,b)=>a+b,0) / mcIterations / numDays * 10) / 10,
+          avgCarryOver: numDays > 1 ? Math.round(carryOvers.reduce((a,b)=>a+b,0) / mcIterations / (numDays-1) * 10) / 10 : 0,
           worstEnd: Math.max(...endTimes),
           avgEfficiency: Math.round(efficiencies.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
           avgUtilization: Math.round(utilizations.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
+          avgOpsMin: Math.round(opsMins.reduce((a,b)=>a+b,0) / mcIterations),
           endTimes,
         };
       }
@@ -1515,8 +1518,8 @@ export default function ORSimV5() {
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead><tr>
                       {(lang==="pl"
-                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","Efektywność sali","Wykorzystanie sali","Najgorszy dzień"]
-                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","Room efficiency","Room utilization","Worst day"]
+                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","Min op. śr./dzień","Efektywność sali","Wykorzystanie sali","Najgorszy dzień"]
+                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","Avg op. min/day","Room efficiency","Room utilization","Worst day"]
                       ).map(h=><th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
@@ -1539,6 +1542,9 @@ export default function ORSimV5() {
                               color: r.avgCarryOver>1?"#ff2244":r.avgCarryOver>0?"#ff9f43":"#6bcb77" }}>
                               {r.avgCarryOver.toFixed(1)}
                             </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#4a9eff", fontWeight:600 }}>
+                              {r.avgOpsMin}'
+                            </td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace",
                               color: r.avgEfficiency>=85?"#6bcb77":r.avgEfficiency>=70?"#e0c039":"#ff6b6b" }}>
                               {r.avgEfficiency}%
@@ -1557,7 +1563,43 @@ export default function ORSimV5() {
                   </table>
                 </div>
 
-                {/* 4 individual histograms */}
+                {/* diagnostic message */}
+                {(() => {
+                  const modeVals = modeKeys.map(m => mcResults[m].overtimeRate);
+                  const minOT = Math.min(...modeVals);
+                  const maxOT = Math.max(...modeVals);
+                  const diff = maxOT - minOT;
+                  const allHigh = modeVals.every(v => v > 70);
+                  const allLow  = modeVals.every(v => v < 10);
+                  if (allHigh) return (
+                    <div style={{ background:"#ff224410", border:"1px solid #ff224433", borderRadius:8,
+                      padding:"12px 16px", fontSize:11, color:"#ff9f43",
+                      fontFamily:"'JetBrains Mono',monospace" }}>
+                      ⚠ {lang==="pl"
+                        ? "Plan jest zbyt ciasny — wszystkie strategie regularnie przepełniają salę. Zmniejsz liczbę operacji lub zwiększ limit nadgodzin aby zobaczyć różnicę między strategiami."
+                        : "Plan is too tight — all strategies regularly overflow. Reduce the number of operations or increase the overtime limit to see differences between strategies."}
+                    </div>
+                  );
+                  if (allLow && diff < 5) return (
+                    <div style={{ background:"#6bcb7710", border:"1px solid #6bcb7733", borderRadius:8,
+                      padding:"12px 16px", fontSize:11, color:"#6bcb77",
+                      fontFamily:"'JetBrains Mono',monospace" }}>
+                      ✓ {lang==="pl"
+                        ? "Plan ma duży zapas — wszystkie strategie mieszczą się w dniu. Zwiększ liczbę operacji aby zobaczyć różnicę między strategiami."
+                        : "Plan has a large margin — all strategies fit within the day. Increase operations to see differences between strategies."}
+                    </div>
+                  );
+                  if (diff < 5) return (
+                    <div style={{ background:"#e0c03910", border:"1px solid #e0c03933", borderRadius:8,
+                      padding:"12px 16px", fontSize:11, color:"#e0c039",
+                      fontFamily:"'JetBrains Mono',monospace" }}>
+                      ℹ {lang==="pl"
+                        ? `Różnica między strategiami wynosi tylko ${diff}%. Spróbuj zwiększyć liczbę operacji lub zmienić parametry rozkładu aby uzyskać wyraźniejszy efekt.`
+                        : `Difference between strategies is only ${diff}%. Try increasing operations or changing distribution parameters for a clearer effect.`}
+                    </div>
+                  );
+                  return null;
+                })()}
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12 }}>
                   {modeKeys.map(mode => {
                     const color = COLORS[mode];
@@ -1599,6 +1641,13 @@ export default function ORSimV5() {
                           </BarChart>
                         </ResponsiveContainer>
                         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginTop:8 }}>
+                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
+                            <div style={{ fontSize:16, fontWeight:600, color:"#4a9eff",
+                              fontFamily:"'JetBrains Mono',monospace" }}>{r.avgOpsMin}'</div>
+                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                              {lang==="pl" ? "min op./dzień" : "op. min/day"}
+                            </div>
+                          </div>
                           <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
                             <div style={{ fontSize:16, fontWeight:600, color,
                               fontFamily:"'JetBrains Mono',monospace" }}>{minToTime(r.avgEnd)}</div>
