@@ -608,7 +608,57 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
   return days;
 }
 
-// ── Dual simulation — same actuals, two plans ─────────────────────────────
+// ── Days-to-complete simulation ───────────────────────────────────────────
+// Returns how many days needed to execute ALL operations in plan (carry-over
+// keeps going until every op is done). Max cap = numDays * 3 to prevent infinite loops.
+function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffsets, overtimeLimit, disruptions = {}) {
+  const { enableDelay=false, delayOnTime=0.7, delayMean=20,
+          enableSor=false, sorLambda=1, sorDuration=60, sorPriority="end" } = disruptions;
+  const HARD_END = END + overtimeLimit;
+  const MAX_DAYS = plan.length * 3; // safety cap
+
+  const calcPlanned = (proc, surg) => {
+    if (planMode === "robust") return getPlanned(matrix, proc, surg, "robust", customOffsets);
+    return getGlobalPlanned(procParams, proc, planMode, customOffsets);
+  };
+
+  // Build full queue — each op appears exactly once
+  let queue = plan.map((op, i) => ({ ...op, id: i }));
+  let day = 0;
+
+  while (queue.length > 0 && day < MAX_DAYS) {
+    day++;
+    const HARD = HARD_END;
+    const startDelay = enableDelay ? sampleStartDelay(delayOnTime, delayMean) : 0;
+    let tReal = START + startDelay;
+    let tPlan = START;
+    const nextQueue = [];
+
+    for (const op of queue) {
+      const planned = calcPlanned(op.proc, op.chir);
+      const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+      const skill = SURGEON_SKILL[op.chir] ?? 1;
+      const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
+
+      const startReal = Math.max(tReal, START);
+      const endReal = startReal + actual;
+      const endPlan = tPlan + planned;
+
+      if (endPlan > HARD || endReal > HARD) {
+        // carry-over to next day
+        nextQueue.push(op);
+        continue;
+      }
+
+      tReal = endReal + PREP;
+      tPlan = endPlan + PREP;
+    }
+
+    queue = nextQueue;
+  }
+
+  return day;
+}
 // Returns { base: days[], robust: days[] } using same random draws
 function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions = {}, robustPlanOverride = null) {
   const { enableDelay=false, delayOnTime=0.7, delayMean=20,
@@ -1194,14 +1244,19 @@ export default function ORSimV5() {
     // run async to allow UI to update
     setTimeout(() => {
       const modes = ["mean", "p50", "p80", "custom", "robust"];
+      // for robust mode — use optimized plan if available
+      const robustPlanForMC = slotsRobust
+        ? slotsRobust.filter(s => s.proc !== null)
+        : validPlan;
 
       const results = {};
       for (const mode of modes) {
+        const planForMode = mode === "robust" ? robustPlanForMC : validPlan;
         const endTimes = [], delays = [], overtimeDays = [], carryDays = [];
         const overtimeMins = [], carryOvers = [], efficiencies = [], utilizations = [], opsMins = [], financials = [];
-        const totalPlannedMins = [], totalActualMins = [], opsOnTime = [], opsLate = [];
+        const totalPlannedMins = [], totalActualMins = [], opsOnTime = [], opsLate = [], daysToFinish = [];
         for (let i = 0; i < mcIterations; i++) {
-          const sim = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
+          const sim = simulateMultiDay(planForMode, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
           const allR = sim.flatMap(d => d.rows).filter(r => !r.isSor);
           const lastE = sim.at(-1)?.lastEnd ?? END;
           const totalD = allR.reduce((a, r) => a + Math.max(0, r.delay), 0);
@@ -1219,6 +1274,8 @@ export default function ORSimV5() {
           const financial = Math.round((totalOpsMinAll * revenuePerMin - totalOTMin * overtimeCostPerMin) / numDays);
           const nOnTime = allR.filter(r => r.delay <= 0).length;
           const nLate   = allR.filter(r => r.delay > 0).length;
+          // days to complete: simulate until all ops done
+          const dtc = simulateDaysToComplete(planForMode, procParams, matrix, mode, customOffsets, overtimeLimit, disruptions);
           endTimes.push(lastE);
           delays.push(totalD);
           overtimeDays.push(hasOT ? 1 : 0);
@@ -1233,6 +1290,7 @@ export default function ORSimV5() {
           totalActualMins.push(totalOpsMinAll);
           opsOnTime.push(nOnTime);
           opsLate.push(nLate);
+          daysToFinish.push(dtc);
         }
         endTimes.sort((a, b) => a - b);
         delays.sort((a, b) => a - b);
@@ -1254,6 +1312,9 @@ export default function ORSimV5() {
           totalOpsOnTime: Math.round(opsOnTime.reduce((a,b)=>a+b,0) / mcIterations),
           totalOpsLate: Math.round(opsLate.reduce((a,b)=>a+b,0) / mcIterations),
           otcr: Math.round(opsOnTime.reduce((a,b)=>a+b,0) / (opsOnTime.reduce((a,b)=>a+b,0) + opsLate.reduce((a,b)=>a+b,0)) * 100),
+          avgDaysToFinish: Math.round(daysToFinish.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
+          minDaysToFinish: Math.min(...daysToFinish),
+          maxDaysToFinish: Math.max(...daysToFinish),
           endTimes,
         };
       }
@@ -2088,8 +2149,8 @@ export default function ORSimV5() {
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead><tr>
                       {(lang==="pl"
-                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","OTCR% (trafność planu)","Plan (min łącznie)","Realizacja (min łącznie)","Efektywność sali","Wykorzystanie sali","Wynik śr./dzień (zł)","Najgorszy dzień"]
-                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","OTCR% (schedule adherence)","Planned (min total)","Actual (min total)","Room efficiency","Room utilization","Avg result/day (zł)","Worst day"]
+                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","OTCR% (trafność planu)","Dni do końca planu","Plan (min łącznie)","Realizacja (min łącznie)","Efektywność sali","Wykorzystanie sali","Wynik śr./dzień (zł)","Najgorszy dzień"]
+                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","OTCR% (schedule adherence)","Days to complete","Planned (min total)","Actual (min total)","Room efficiency","Room utilization","Avg result/day (zł)","Worst day"]
                       ).map(h=><th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
@@ -2116,6 +2177,13 @@ export default function ORSimV5() {
                               color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b",
                               fontSize:13 }}>
                               {r.otcr}%
+                            </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
+                              color:"#00d4ff", fontSize:13 }}>
+                              {r.avgDaysToFinish}
+                              <span style={{ fontSize:9, color:"#555", marginLeft:4 }}>
+                                ({r.minDaysToFinish}–{r.maxDaysToFinish})
+                              </span>
                             </td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>
                               {r.totalPlanned}'
