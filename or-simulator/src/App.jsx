@@ -337,18 +337,54 @@ function getGlobalPlanned(procParams, proc, planMode, customOffsets) {
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
 
+// ── MIT Robust Planning — Box Uncertainty Set ────────────────────────────
+// Allocates a total budget of Gamma × max_deviation across all operations.
+// Operations with higher σ (more variable) get proportionally more buffer.
+// Returns a map: { proc_surg_key → planned_minutes }
+function buildRobustPlan(plan, matrix, procParams, gamma) {
+  if (!plan || plan.length === 0) return {};
+
+  // For each op compute: p50 (base) and max_deviation = p80 - p50
+  const ops = plan.map(op => {
+    const cell = matrix[op.proc]?.[op.chir];
+    const { sigma } = procParams[op.proc] ?? { sigma: 0.28 };
+    const p50 = cell?.p50 ?? Math.round(lognormP50(
+      procParams[op.proc]?.mu ?? 4.06, sigma));
+    const p80 = cell?.p80 ?? Math.round(lognormP80(
+      procParams[op.proc]?.mu ?? 4.06, sigma));
+    const deviation = Math.max(0, p80 - p50); // max possible overrun
+    return { proc: op.proc, chir: op.chir, p50, deviation, sigma };
+  });
+
+  // Total budget = Gamma × max single deviation
+  const maxDev = Math.max(...ops.map(o => o.deviation), 1);
+  const totalBudget = gamma * maxDev;
+
+  // Allocate proportionally to deviation (higher σ → more buffer)
+  const totalDev = ops.reduce((a, o) => a + o.deviation, 0) || 1;
+  const result = {};
+  ops.forEach(op => {
+    const key = `${op.proc}__${op.chir}`;
+    const share = totalDev > 0 ? op.deviation / totalDev : 0;
+    const buffer = Math.round(share * totalBudget);
+    result[key] = Math.max(10, Math.round((op.p50 + buffer) / 5) * 5);
+  });
+  return result;
+}
+
 // Robust plan — uses surgeon × procedure matrix (per-surgeon statistics)
 function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   if (planMode === "robust") {
+    // robustPlan map is passed via customOffsets._robustPlan
+    const robustPlan = customOffsets?._robustPlan;
+    if (robustPlan) {
+      const key = `${proc}__${surg}`;
+      return robustPlan[key] ?? 60;
+    }
+    // fallback: p80 per surgeon
     const cell = matrix[proc]?.[surg];
     if (!cell) return 60;
-    const level = customOffsets?._level ?? 0.8; // default P80
-    // interpolate between p50 and p80 based on level
-    const base = level <= 0.5 ? cell.p50
-               : level >= 0.8 ? cell.p80
-               : Math.round(cell.p50 + (cell.p80 - cell.p50) * ((level - 0.5) / 0.3));
-    const offset = customOffsets?.[proc] ?? 0;
-    return Math.max(10, Math.round((base + offset) / 5) * 5);
+    return Math.max(10, Math.round(cell.p80 / 5) * 5);
   }
   const cell = matrix[proc]?.[surg];
   if (!cell) return 60;
@@ -637,8 +673,13 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
     return days;
   };
 
-  const baseFn   = (proc, surg) => getGlobalPlanned(procParams, proc, planMode, customOffsets);
-  const robustFn = (proc, surg) => getPlanned(matrix, proc, surg, "robust", { ...customOffsets, _level: robustLevel });
+  const baseFn = (proc, surg) => getGlobalPlanned(procParams, proc, planMode, customOffsets);
+
+  // Build robust plan once using Gamma (robustLevel is now Gamma)
+  const robustPlanMap = buildRobustPlan(plan, matrix, procParams, robustLevel);
+  const robustFn = (proc, surg) => getPlanned(matrix, proc, surg, "robust", {
+    ...customOffsets, _robustPlan: robustPlanMap
+  });
 
   return {
     base:   runPlan(baseFn),
@@ -738,9 +779,13 @@ function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planCol
   const filledSlots = slots.filter(s => s.proc !== null);
   if (filledSlots.length === 0) return null;
   const W = 460;
-  const calcDur = (s) => planMode === "robust"
-    ? getPlanned(matrix, s.proc, s.chir, "robust", customOffsets)
-    : getGlobalPlanned(procParams, s.proc, planMode, customOffsets);
+  const calcDur = (s) => {
+    if (planMode === "robust") {
+      const robustMap = buildRobustPlan(filledSlots, matrix, procParams, customOffsets?._level ?? robustLevel ?? 2);
+      return robustMap[`${s.proc}__${s.chir}`] ?? 60;
+    }
+    return getGlobalPlanned(procParams, s.proc, planMode, customOffsets);
+  };
 
   const days = Array.from({ length: numDays }, (_, d) => {
     let t = START;
@@ -760,7 +805,7 @@ function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planCol
       <div style={{ fontSize:10, letterSpacing:"0.1em", color: planColor, textTransform:"uppercase",
         fontFamily:"'JetBrains Mono',monospace", marginBottom:8, fontWeight:700 }}>
         {planMode === "robust"
-          ? `🛡 Robust P${Math.round((customOffsets?._level ?? 0.8)*100)}`
+          ? `🛡 Robust Γ=${(customOffsets?._level ?? 2).toFixed(1)}`
           : `Plan · ${planMode.toUpperCase()}`}
         {" · "}{numDays} {numDays === 1 ? "day" : "days"}
       </div>
@@ -1036,7 +1081,7 @@ export default function ORSimV5() {
   const [mcIterations, setMcIterations] = useLocalStorage("or_mcIter", 500);
   const [revenuePerMin, setRevenuePerMin] = useLocalStorage("or_revenue", 160);
   const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 10);
-  const [robustLevel, setRobustLevel] = useLocalStorage("or_robustLevel", 0.8);
+  const [robustLevel, setRobustLevel] = useLocalStorage("or_robustLevel", 2.0);
 
   const t = T[lang];
   const matrix = useMemo(() => generateHistory(procParams), [procParams]);
@@ -1360,62 +1405,72 @@ export default function ORSimV5() {
                 <ModeBtn key={mode} mode={mode} active={planMode===mode} onClick={handleModeChange} label={cfg.label} desc={cfg.desc} color={cfg.color} />
               ))}
             </div>
-            {/* robust level slider */}
+            {/* robust level slider — now Gamma */}
             <div style={{ background:"#0d0d1a", borderRadius:8, padding:"12px 16px", marginBottom:12,
               border:"1px solid #00d4ff33" }}>
               <div style={{ display:"flex", alignItems:"center", gap:12 }}>
                 <span style={{ fontSize:11, color:"#00d4ff", fontWeight:600, whiteSpace:"nowrap" }}>
-                  🛡 Robust level:
+                  🛡 Γ (Gamma):
                 </span>
-                <input type="range" min={0.5} max={1.0} step={0.05} value={robustLevel}
+                <input type="range" min={0.5} max={slots.filter(s=>s.proc).length || 6} step={0.5}
+                  value={robustLevel}
                   onChange={e => setRobustLevel(parseFloat(e.target.value))}
                   style={{ flex:1, accentColor:"#00d4ff", cursor:"pointer" }} />
                 <span style={{ fontSize:14, fontWeight:700, color:"#00d4ff",
-                  fontFamily:"'JetBrains Mono',monospace", minWidth:40 }}>
-                  P{Math.round(robustLevel*100)}
+                  fontFamily:"'JetBrains Mono',monospace", minWidth:32 }}>
+                  {robustLevel.toFixed(1)}
                 </span>
               </div>
-              <div style={{ fontSize:10, color:"#555", marginTop:6, fontFamily:"'JetBrains Mono',monospace" }}>
+              <div style={{ fontSize:10, color:"#555", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
                 {lang==="pl"
-                  ? "Plan Robust używa tego percentyla z macierzy chirurg × procedura"
-                  : "Robust plan uses this percentile from surgeon × procedure matrix"}
+                  ? `Chronisz ${robustLevel.toFixed(1)} operacji — bufor rozdzielany wg zmienności (σ)`
+                  : `Protecting ${robustLevel.toFixed(1)} operations — buffer allocated by variability (σ)`}
               </div>
               {/* robust plan preview table */}
-              <div style={{ marginTop:12, overflowX:"auto" }}>
-                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:10 }}>
-                  <thead><tr>
-                    <th style={{ color:"#00d4ff", fontSize:9 }}>{lang==="pl"?"Procedura":"Procedure"}</th>
-                    {SURGEONS.map(s => (
-                      <th key={s} style={{ color:SURGEON_COLORS[s], fontSize:9 }}>
-                        {lang==="pl"?"Chir.":"Surg."} {s}
-                      </th>
-                    ))}
-                  </tr></thead>
-                  <tbody>
-                    {PROCS.map(proc => (
-                      <tr key={proc}>
-                        <td style={{ color:"#666", fontSize:10, paddingRight:8 }}>{proc}</td>
-                        {SURGEONS.map(s => {
-                          const cell = matrix[proc]?.[s];
-                          const val = cell
-                            ? Math.max(10, Math.round(
-                                (robustLevel <= 0.5 ? cell.p50
-                                : robustLevel >= 0.8 ? cell.p80
-                                : Math.round(cell.p50 + (cell.p80 - cell.p50) * ((robustLevel - 0.5) / 0.3)))
-                              / 5) * 5)
-                            : "—";
+              {slots.filter(s=>s.proc).length > 0 && (() => {
+                const validPlan = slots.filter(s => s.proc !== null);
+                const robustMap = buildRobustPlan(validPlan, matrix, procParams, robustLevel);
+                return (
+                  <div style={{ marginTop:12, overflowX:"auto" }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:10 }}>
+                      <thead><tr>
+                        <th style={{ color:"#444", fontSize:9 }}>{lang==="pl"?"#":"#"}</th>
+                        <th style={{ color:"#444", fontSize:9 }}>{lang==="pl"?"Procedura":"Procedure"}</th>
+                        <th style={{ color:"#444", fontSize:9 }}>{lang==="pl"?"Chir.":"Surg."}</th>
+                        <th style={{ color:"#e07b39", fontSize:9 }}>P50</th>
+                        <th style={{ color:"#ff9f43", fontSize:9 }}>σ</th>
+                        <th style={{ color:"#00d4ff", fontSize:9 }}>Bufor</th>
+                        <th style={{ color:"#00d4ff", fontSize:9, fontWeight:700 }}>Robust</th>
+                      </tr></thead>
+                      <tbody>
+                        {validPlan.map((op, i) => {
+                          const key = `${op.proc}__${op.chir}`;
+                          const cell = matrix[op.proc]?.[op.chir];
+                          const { sigma, mu } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+                          const p50 = cell?.p50 ?? Math.round(lognormP50(mu, sigma));
+                          const robust = robustMap[key] ?? p50;
+                          const buffer = robust - p50;
                           return (
-                            <td key={s} style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color:"#00d4ff", fontWeight:600, textAlign:"center" }}>
-                              {val}'
-                            </td>
+                            <tr key={i}>
+                              <td style={{ color:"#444", fontFamily:"'JetBrains Mono',monospace" }}>{i+1}</td>
+                              <td style={{ color:"#666" }}>{op.proc}</td>
+                              <td style={{ color:SURGEON_COLORS[op.chir], fontWeight:600 }}>{op.chir}</td>
+                              <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{p50}'</td>
+                              <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43" }}>{sigma.toFixed(2)}</td>
+                              <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                                color: buffer > 0 ? "#00d4ff" : "#333" }}>
+                                {buffer > 0 ? `+${buffer}'` : "0'"}
+                              </td>
+                              <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                                color:"#00d4ff", fontWeight:700 }}>{robust}'</td>
+                            </tr>
                           );
                         })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
             <div style={{ background:"#0d0d14", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#555", lineHeight:1.7 }}>
               <strong style={{ color:"#777" }}>{t.planning.explainTitle}</strong><br/>
@@ -1648,7 +1703,7 @@ export default function ORSimV5() {
                 </span>
                 <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
                   <span style={{ border:`2px solid ${robustColor}`, width:18, height:10, borderRadius:2, display:"inline-block" }} />
-                  <strong style={{ color:robustColor }}>Robust P{Math.round(robustLevel*100)}</strong>
+                  <strong style={{ color:robustColor }}>Robust Γ={robustLevel.toFixed(1)}</strong>
                 </span>
                 <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
                   <span style={{ background:"#aaa", width:18, height:10, borderRadius:2, display:"inline-block" }} />
@@ -1684,7 +1739,7 @@ export default function ORSimV5() {
               {/* robust plan */}
               <div className="card" style={{ borderTop:`2px solid ${robustColor}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                  <span style={{ fontSize:12, fontWeight:700, color:robustColor }}>Robust P{Math.round(robustLevel*100)}</span>
+                  <span style={{ fontSize:12, fontWeight:700, color:robustColor }}>Robust Γ={robustLevel.toFixed(1)}</span>
                   <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
                     color: robustSum.overtime ? "#ff6b6b" : "#6bcb77" }}>
                     {minToTime(robustSum.lastEnd)}{robustSum.overtime ? " ⚠" : " ✓"}
@@ -1703,8 +1758,8 @@ export default function ORSimV5() {
               <table style={{ width:"100%", borderCollapse:"collapse" }}>
                 <thead><tr>
                   {(lang==="pl"
-                    ? ["KPI", MODE_CONFIG[planMode].label, `Robust P${Math.round(robustLevel*100)}`, "Różnica"]
-                    : ["KPI", MODE_CONFIG[planMode].label, `Robust P${Math.round(robustLevel*100)}`, "Difference"]
+                    ? ["KPI", MODE_CONFIG[planMode].label, `Robust Γ=${robustLevel.toFixed(1)}`, "Różnica"]
+                    : ["KPI", MODE_CONFIG[planMode].label, `Robust Γ=${robustLevel.toFixed(1)}`, "Difference"]
                   ).map((h,i) => <th key={i} style={{ color: i===1?planColor:i===2?robustColor:"#444" }}>{h}</th>)}
                 </tr></thead>
                 <tbody>
@@ -1808,7 +1863,7 @@ export default function ORSimV5() {
               return (
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                   {detailTable(days, planColor, `${MODE_CONFIG[planMode].label} — ${lang==="pl"?"szczegóły":"details"}`)}
-                  {detailTable(daysRobust, robustColor, `Robust P${Math.round(robustLevel*100)} — ${lang==="pl"?"szczegóły":"details"}`)}
+                  {detailTable(daysRobust, robustColor, `Robust Γ=${robustLevel.toFixed(1)} — ${lang==="pl"?"szczegóły":"details"}`)}
                 </div>
               );
             })()}
