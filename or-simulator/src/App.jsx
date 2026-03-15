@@ -1390,6 +1390,7 @@ export default function ORSimV5() {
   const [mcIterations, setMcIterations] = useLocalStorage("or_mcIter", 500);
   const [revenuePerMin, setRevenuePerMin] = useLocalStorage("or_revenue", 160);
   const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 1100/60);
+  const [dayOperatingCost, setDayOperatingCost] = useLocalStorage("or_daycost", 100);
   const [robustLevel, setRobustLevel] = useLocalStorage("or_robustLevel", 2.0);
   const [planningWindow, setPlanningWindow] = useLocalStorage("or_planWindow", 3);
 
@@ -2528,6 +2529,50 @@ export default function ORSimV5() {
               </div>
             )}
 
+            {/* financial summary */}
+            {daysOptimized && baseSum && optSum && saved > 0 && (
+              <div className="card" style={{ borderLeft:"3px solid #6bcb77" }}>
+                <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#6bcb77", textTransform:"uppercase",
+                  marginBottom:12, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                  💰 {lang==="pl" ? "Oszczędność finansowa" : "Financial savings"}
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
+                  <div style={{ background:"#0d0d14", borderRadius:8, padding:"14px 16px" }}>
+                    <div style={{ fontSize:24, fontWeight:700, color:"#6bcb77",
+                      fontFamily:"'JetBrains Mono',monospace" }}>
+                      {saved}
+                    </div>
+                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>
+                      {lang==="pl" ? "zaoszczędzone dni" : "days saved"}
+                    </div>
+                  </div>
+                  <div style={{ background:"#0d0d14", borderRadius:8, padding:"14px 16px" }}>
+                    <div style={{ fontSize:24, fontWeight:700, color:"#6bcb77",
+                      fontFamily:"'JetBrains Mono',monospace" }}>
+                      {(saved * dayOperatingCost).toLocaleString()} tys.
+                    </div>
+                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>
+                      {lang==="pl" ? `oszczędność kosztu sali (${dayOperatingCost} tys./dzień)` : `OR cost savings (${dayOperatingCost}k/day)`}
+                    </div>
+                  </div>
+                  <div style={{ background:"#0d0d14", borderRadius:8, padding:"14px 16px" }}>
+                    <div style={{ fontSize:24, fontWeight:700, color:"#4a9eff",
+                      fontFamily:"'JetBrains Mono',monospace" }}>
+                      {(saved * (END - START) * revenuePerMin / 1000).toFixed(0)} tys.
+                    </div>
+                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>
+                      {lang==="pl" ? `potencjał przychodu z wolnych dni (${revenuePerMin} zł/min)` : `revenue potential from freed days`}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ marginTop:10, fontSize:10, color:"#555", fontFamily:"'JetBrains Mono',monospace" }}>
+                  {lang==="pl"
+                    ? `Okno planowania: ${planningWindow} dni · Łącznie: ${((saved * dayOperatingCost) + (saved * (END-START) * revenuePerMin / 1000)).toFixed(0)} tys. zł potencjalnej wartości`
+                    : `Planning window: ${planningWindow} days · Total: ${((saved * dayOperatingCost) + (saved * (END-START) * revenuePerMin / 1000)).toFixed(0)}k zł potential value`}
+                </div>
+              </div>
+            )}
+
             {/* two gantts */}
             {daysOptimized && (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
@@ -2603,6 +2648,16 @@ export default function ORSimV5() {
                   style={{ flex:1, accentColor:"#ff6b6b", cursor:"pointer" }} />
                 <span style={{ fontSize:13, fontWeight:700, color:"#ff6b6b",
                   fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{overtimeCostPerMin * 60} zł</span>
+              </div>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>
+                  {lang==="pl" ? "Koszt dnia sali (tys. zł):" : "OR day cost (k zł):"}
+                </span>
+                <input type="range" min={50} max={300} step={10} value={dayOperatingCost}
+                  onChange={e => setDayOperatingCost(parseInt(e.target.value))}
+                  style={{ flex:1, accentColor:"#a78bfa", cursor:"pointer" }} />
+                <span style={{ fontSize:13, fontWeight:700, color:"#a78bfa",
+                  fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{dayOperatingCost} tys.</span>
               </div>
             </div>
           </div>
