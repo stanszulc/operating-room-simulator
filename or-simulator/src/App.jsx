@@ -396,71 +396,93 @@ function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
 
-// ── Robust Plan Optimizer ─────────────────────────────────────────────────
-// Sorts operations by coefficient of variation (σ/μ) — predictable first.
-// Then greedily tries to add one extra operation from the pool if budget allows.
-// Returns { slots: optimizedSlots, added: bool, addedOp: op|null }
-function optimizePlan(slots, procParams, matrix, gamma, overtimeLimit) {
+// ── Robust Plan Optimizer — Rolling Horizon ───────────────────────────────
+// Each day: sort ops by CV (predictable first).
+// If time left after all ops → pull shortest op from next N days.
+// That op disappears from its original day (which may then have a free slot too).
+// Never creates fictional ops. planningWindow = max days ahead to borrow from.
+function optimizePlan(slots, procParams, matrix, gamma, overtimeLimit, numDays, planningWindow) {
   const validSlots = slots.filter(s => s.proc !== null);
-  if (validSlots.length === 0) return { slots, added: false, addedOp: null };
+  if (validSlots.length === 0) return { slots, dayPlans: [], totalDays: numDays, saved: 0 };
 
   const HARD_END = END + overtimeLimit;
-  const available = HARD_END - START - PREP * (validSlots.length - 1);
 
-  // Score each slot: lower = more predictable = goes first
-  const scored = validSlots.map(s => {
-    const { mu, sigma } = procParams[s.proc] ?? { mu: 4.06, sigma: 0.28 };
-    const cv = sigma / mu; // coefficient of variation
+  const scoreOp = (op) => {
+    const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
     const p50 = Math.round(lognormP50(mu, sigma));
     const p80 = Math.round(lognormP80(mu, sigma));
-    const deviation = p80 - p50;
-    return { ...s, cv, p50, deviation };
-  });
+    return { ...op, cv: sigma/mu, p50, deviation: Math.max(0, p80-p50) };
+  };
 
-  // Sort: most predictable (low cv) first
-  const sorted = [...scored].sort((a, b) => a.cv - b.cv);
+  // Build initial schedule: each day has same ops as base plan
+  let schedule = Array.from({ length: numDays }, () =>
+    validSlots.map(s => scoreOp({ ...s }))
+  );
 
-  // Check if we can add one more operation — pick shortest predictable from PROCS
-  const maxDev = Math.max(...scored.map(o => o.deviation), 1);
-  const totalBudget = gamma * maxDev;
-  const currentSum = sorted.reduce((a, s) => a + s.p50, 0);
-  const currentBudget = sorted.reduce((a, s) => a + s.deviation, 0) / scored.length * gamma;
+  // Process day by day — rolling horizon
+  for (let d = 0; d < schedule.length; d++) {
+    // Sort today's ops by CV (predictable first)
+    schedule[d].sort((a, b) => a.cv - b.cv);
 
-  // Find best extra op that fits within remaining budget
-  let addedOp = null;
-  const remaining = available - currentSum - totalBudget;
+    // Calculate time used by today's ops with Γ budget
+    const maxDev = Math.max(...schedule[d].map(o => o.deviation), 1);
+    const budget = gamma * maxDev;
+    let usedTime = 0;
+    let usedBudget = 0;
+    for (const op of schedule[d]) {
+      usedTime += (usedTime > 0 ? PREP : 0) + op.p50;
+      usedBudget += op.deviation;
+    }
 
-  if (remaining > 0) {
-    // Try each procedure with each surgeon, pick one that fits
-    const candidates = PROCS.flatMap(proc =>
-      ["A","B","C"].map(chir => {
-        const { mu, sigma } = procParams[proc] ?? { mu: 4.06, sigma: 0.28 };
-        const p50 = Math.round(lognormP50(mu, sigma));
-        const p80 = Math.round(lognormP80(mu, sigma));
-        const dev = p80 - p50;
-        return { proc, chir, p50, dev };
-      })
-    ).filter(c => c.p50 + c.dev <= remaining)
-     .sort((a, b) => a.p50 - b.p50); // shortest first
+    // Check remaining time — can we fit an extra op?
+    let timeLeft = HARD_END - START - usedTime - Math.max(0, usedBudget - budget);
 
-    if (candidates.length > 0) {
-      addedOp = { proc: candidates[0].proc, chir: candidates[0].chir };
+    // Look ahead N days for shortest op that fits
+    let borrowed = true;
+    while (borrowed && timeLeft > PREP + 10) {
+      borrowed = false;
+      let bestOp = null, bestDay = -1, bestIdx = -1;
+
+      for (let fd = d + 1; fd <= Math.min(d + planningWindow, schedule.length - 1); fd++) {
+        for (let oi = 0; oi < schedule[fd].length; oi++) {
+          const op = schedule[fd][oi];
+          const needed = PREP + op.p50 + op.deviation;
+          if (needed <= timeLeft) {
+            if (!bestOp || op.p50 < bestOp.p50) {
+              bestOp = op; bestDay = fd; bestIdx = oi;
+            }
+          }
+        }
+      }
+
+      if (bestOp && bestDay >= 0) {
+        // Add to today, remove from future day
+        schedule[d].push(bestOp);
+        schedule[bestDay].splice(bestIdx, 1);
+        usedTime += PREP + bestOp.p50;
+        usedBudget += bestOp.deviation;
+        timeLeft = HARD_END - START - usedTime - Math.max(0, usedBudget - budget);
+        borrowed = true;
+      }
     }
   }
 
-  const optimizedSlots = sorted.map(({ cv, p50, deviation, ...s }) => s);
-  if (addedOp) optimizedSlots.push(addedOp);
+  // Remove empty days at the end
+  const dayPlans = schedule
+    .map(day => day.map(({ cv, p50, deviation, ...op }) => op))
+    .filter(day => day.length > 0);
 
-  // Pad to original length if needed
-  while (optimizedSlots.length < slots.length) {
-    optimizedSlots.push({ proc: null, chir: "A" });
-  }
+  const totalDays = dayPlans.length;
+  const saved = Math.max(0, numDays - totalDays);
 
-  return {
-    slots: optimizedSlots,
-    added: !!addedOp,
-    addedOp,
-  };
+  // slotsRobust = first day for MiniGantt
+  const firstDay = dayPlans[0] ?? validSlots;
+  const newSlots = [
+    ...firstDay,
+    ...Array(Math.max(0, slots.length - firstDay.length)).fill({ proc: null, chir: "A" })
+  ];
+
+  return { slots: newSlots, dayPlans, totalDays, saved };
 }
 function samplePoisson(lambda) {
   // Knuth algorithm
@@ -609,26 +631,44 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
 }
 
 // ── Days-to-complete simulation ───────────────────────────────────────────
-// Returns how many days needed to execute ALL operations in plan (carry-over
-// keeps going until every op is done). Max cap = numDays * 3 to prevent infinite loops.
-function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffsets, overtimeLimit, disruptions = {}) {
-  const { enableDelay=false, delayOnTime=0.7, delayMean=20,
-          enableSor=false, sorLambda=1, sorDuration=60, sorPriority="end" } = disruptions;
+function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffsets, overtimeLimit, disruptions = {}, prepackedDayPlans = null) {
+  const { enableDelay=false, delayOnTime=0.7, delayMean=20 } = disruptions;
   const HARD_END = END + overtimeLimit;
-  const MAX_DAYS = plan.length * 3; // safety cap
+  const MAX_DAYS = plan.length * 3;
 
   const calcPlanned = (proc, surg) => {
     if (planMode === "robust") return getPlanned(matrix, proc, surg, "robust", customOffsets);
     return getGlobalPlanned(procParams, proc, planMode, customOffsets);
   };
 
-  // Build full queue — each op appears exactly once
+  // If pre-packed day plans provided — count days directly with carry-over simulation
+  if (prepackedDayPlans) {
+    let queue = prepackedDayPlans.flat().map((op, i) => ({ ...op, id: i }));
+    let day = 0;
+    while (queue.length > 0 && day < MAX_DAYS) {
+      day++;
+      const startDelay = enableDelay ? sampleStartDelay(delayOnTime, delayMean) : 0;
+      let tReal = START + startDelay;
+      const nextQueue = [];
+      for (const op of queue) {
+        const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+        const skill = SURGEON_SKILL[op.chir] ?? 1;
+        const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
+        const endReal = tReal + actual;
+        if (endReal > HARD_END) { nextQueue.push(op); continue; }
+        tReal = endReal + PREP;
+      }
+      queue = nextQueue;
+    }
+    return day;
+  }
+
+  // Standard: flat queue, simulate until empty
   let queue = plan.map((op, i) => ({ ...op, id: i }));
   let day = 0;
 
   while (queue.length > 0 && day < MAX_DAYS) {
     day++;
-    const HARD = HARD_END;
     const startDelay = enableDelay ? sampleStartDelay(delayOnTime, delayMean) : 0;
     let tReal = START + startDelay;
     let tPlan = START;
@@ -639,24 +679,14 @@ function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffset
       const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
       const skill = SURGEON_SKILL[op.chir] ?? 1;
       const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
-
-      const startReal = Math.max(tReal, START);
-      const endReal = startReal + actual;
+      const endReal = tReal + actual;
       const endPlan = tPlan + planned;
-
-      if (endPlan > HARD || endReal > HARD) {
-        // carry-over to next day
-        nextQueue.push(op);
-        continue;
-      }
-
+      if (endPlan > HARD_END || endReal > HARD_END) { nextQueue.push(op); continue; }
       tReal = endReal + PREP;
       tPlan = endPlan + PREP;
     }
-
     queue = nextQueue;
   }
-
   return day;
 }
 // Returns { base: days[], robust: days[] } using same random draws
@@ -1181,7 +1211,8 @@ export default function ORSimV5() {
   const [overtimeLimit, setOvertimeLimit] = useLocalStorage("or_overtime", 240);
   const [opsCount, setOpsCount]         = useLocalStorage("or_opsCount", 6);
   const [slots, setSlots]               = useLocalStorage("or_slots", buildRandomPlan(6));
-  const [slotsRobust, setSlotsRobust]   = useState(null); // null = same as slots (not yet optimized)
+  const [slotsRobust, setSlotsRobust]   = useState(null);
+  const [optimizedDayPlans, setOptimizedDayPlans] = useState(null); // null = same as slots (not yet optimized)
 
   // disruption state
   const [enableDelay, setEnableDelay]   = useLocalStorage("or_enableDelay", false);
@@ -1200,6 +1231,7 @@ export default function ORSimV5() {
   const [revenuePerMin, setRevenuePerMin] = useLocalStorage("or_revenue", 160);
   const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 1100/60);
   const [robustLevel, setRobustLevel] = useLocalStorage("or_robustLevel", 2.0);
+  const [planningWindow, setPlanningWindow] = useLocalStorage("or_planWindow", 3);
 
   const t = T[lang];
   const matrix = useMemo(() => generateHistory(procParams), [procParams]);
@@ -1274,8 +1306,10 @@ export default function ORSimV5() {
           const financial = Math.round((totalOpsMinAll * revenuePerMin - totalOTMin * overtimeCostPerMin) / numDays);
           const nOnTime = allR.filter(r => r.delay <= 0).length;
           const nLate   = allR.filter(r => r.delay > 0).length;
-          // days to complete: simulate until all ops done
-          const dtc = simulateDaysToComplete(planForMode, procParams, matrix, mode, customOffsets, overtimeLimit, disruptions);
+          // days to complete: simulate until all ops from full period are done
+          const fullPeriodPlan = Array.from({ length: numDays }, () => planForMode).flat();
+          const prepack = (mode === "robust" && optimizedDayPlans) ? optimizedDayPlans : null;
+          const dtc = simulateDaysToComplete(fullPeriodPlan, procParams, matrix, mode, customOffsets, overtimeLimit, disruptions, prepack);
           endTimes.push(lastE);
           delays.push(totalD);
           overtimeDays.push(hasOT ? 1 : 0);
@@ -1327,21 +1361,27 @@ export default function ORSimV5() {
     setSlots(buildRandomPlan(opsCount));
     setSlotsRobust(null);
     setLastOptimizeResult(null);
+    setOptimizedDayPlans(null);
   };
 
   const [lastOptimizeResult, setLastOptimizeResult] = useState(null);
 
   const handleOptimize = useCallback(() => {
-    const result = optimizePlan(slots, procParams, matrix, robustLevel, overtimeLimit);
-    setSlotsRobust(result.slots);
-    setLastOptimizeResult(result);
-    // re-run simulation: base uses original slots, robust uses optimized slots
+    const result = optimizePlan(slots, procParams, matrix, robustLevel, overtimeLimit, numDays, planningWindow);
+    // First day slots for MiniGantt display
+    const firstDaySlots = (result.dayPlans[0] ?? []);
+    const paddedSlots = [...firstDaySlots];
+    while (paddedSlots.length < slots.filter(s=>s.proc).length) paddedSlots.push({ proc: null, chir: "A" });
+    setSlotsRobust(paddedSlots.length > 0 ? paddedSlots : null);
+    setOptimizedDayPlans(result.dayPlans);
+    setLastOptimizeResult({ ...result, added: result.saved > 0, totalDays: result.totalDays });
+    // re-run simulation: base uses original plan, robust uses first day of optimized
     const basePlan = slots.filter(s => s.proc !== null);
-    const robustPlan = result.slots.filter(s => s.proc !== null);
+    const robustFirstDay = firstDaySlots.filter(s => s.proc !== null);
     if (basePlan.length > 0) {
-      setDualDays(simulateDual(basePlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustPlan));
+      setDualDays(simulateDual(basePlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustFirstDay.length > 0 ? robustFirstDay : null));
     }
-  }, [slots, procParams, matrix, robustLevel, overtimeLimit, planMode, customOffsets, numDays, disruptions]);
+  }, [slots, procParams, matrix, robustLevel, overtimeLimit, numDays, planMode, customOffsets, disruptions]);
 
   const setParam = (proc, key, val) =>
     setProcParams(prev => ({ ...prev, [proc]: { ...prev[proc], [key]: val } }));
@@ -1513,19 +1553,19 @@ export default function ORSimV5() {
           </div>
           {lastOptimizeResult && (
             <div style={{ marginBottom:12, padding:"8px 14px", borderRadius:6,
-              background: lastOptimizeResult.added ? "#00d4ff12" : "#6bcb7712",
-              border:`1px solid ${lastOptimizeResult.added ? "#00d4ff44" : "#6bcb7744"}`,
+              background: lastOptimizeResult.saved > 0 ? "#00d4ff12" : "#6bcb7712",
+              border:`1px solid ${lastOptimizeResult.saved > 0 ? "#00d4ff44" : "#6bcb7744"}`,
               fontSize:11, fontFamily:"'JetBrains Mono',monospace" }}>
-              {lastOptimizeResult.added
+              {lastOptimizeResult.saved > 0
                 ? <span style={{ color:"#00d4ff" }}>
                     🔧 {lang==="pl"
-                      ? `Plan Robust zoptymalizowany · dodano: ${lastOptimizeResult.addedOp.proc} (Chir. ${lastOptimizeResult.addedOp.chir}) · Plan bazowy niezmieniony`
-                      : `Robust plan optimized · added: ${lastOptimizeResult.addedOp.proc} (Surg. ${lastOptimizeResult.addedOp.chir}) · Base plan unchanged`}
+                      ? `Robust zoptymalizowany · ${lastOptimizeResult.totalDays} dni zamiast ${numDays} · oszczędność ${lastOptimizeResult.saved} ${lastOptimizeResult.saved === 1 ? "dnia" : "dni"} · Plan bazowy niezmieniony`
+                      : `Robust optimized · ${lastOptimizeResult.totalDays} days instead of ${numDays} · saved ${lastOptimizeResult.saved} day(s) · Base plan unchanged`}
                   </span>
                 : <span style={{ color:"#6bcb77" }}>
                     🔧 {lang==="pl"
-                      ? "Plan Robust zoptymalizowany (kolejność wg zmienności) · Plan bazowy niezmieniony"
-                      : "Robust plan optimized (ordered by variability) · Base plan unchanged"}
+                      ? `Robust zoptymalizowany · ${lastOptimizeResult.totalDays} dni · brak miejsca na skrócenie okresu · Plan bazowy niezmieniony`
+                      : `Robust optimized · ${lastOptimizeResult.totalDays} days · no room to shorten period · Base plan unchanged`}
                   </span>
               }
             </div>
@@ -1611,6 +1651,25 @@ export default function ORSimV5() {
                 {lang==="pl"
                   ? `Chronisz ${robustLevel.toFixed(1)} operacji — bufor rozdzielany wg zmienności (σ)`
                   : `Protecting ${robustLevel.toFixed(1)} operations — buffer allocated by variability (σ)`}
+              </div>
+              {/* planning window slider */}
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:10, paddingTop:10,
+                borderTop:"1px solid #00d4ff22" }}>
+                <span style={{ fontSize:11, color:"#00d4ff", fontWeight:600, whiteSpace:"nowrap" }}>
+                  📅 {lang==="pl" ? "Okno planowania:" : "Planning window:"}
+                </span>
+                <input type="range" min={1} max={5} step={1} value={planningWindow}
+                  onChange={e => setPlanningWindow(parseInt(e.target.value))}
+                  style={{ flex:1, accentColor:"#00d4ff", cursor:"pointer" }} />
+                <span style={{ fontSize:14, fontWeight:700, color:"#00d4ff",
+                  fontFamily:"'JetBrains Mono',monospace", minWidth:48 }}>
+                  {planningWindow} {lang==="pl" ? "dni" : "days"}
+                </span>
+              </div>
+              <div style={{ fontSize:10, color:"#555", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
+                {lang==="pl"
+                  ? `Optymalizator może pożyczyć operację z max ${planningWindow} dni do przodu`
+                  : `Optimizer can borrow an op from up to ${planningWindow} days ahead`}
               </div>
               {/* robust plan preview table */}
               {slots.filter(s=>s.proc).length > 0 && (() => {
