@@ -2166,11 +2166,10 @@ export default function ORSimV5() {
                 </div>
               );
             })()}
-          </div>
-        );
-      })()}
+
+            {/* free slot analysis */}
             {(() => {
-              const MIN_SLOT = 55; // min free time to count as usable slot
+              const MIN_SLOT = 55;
               const HARD_END = END + overtimeLimit;
 
               const freeSlotTable = (d, color, label) => {
@@ -2190,12 +2189,8 @@ export default function ORSimV5() {
                         {label} — {lang==="pl" ? "wolne sloty" : "free slots"}
                       </div>
                       <div style={{ display:"flex", gap:16, fontSize:11, fontFamily:"'JetBrains Mono',monospace" }}>
-                        <span style={{ color:"#6bcb77" }}>
-                          🟢 {greenRows.length} {lang==="pl" ? "dni" : "days"}
-                        </span>
-                        <span style={{ color:"#6bcb77", fontWeight:700 }}>
-                          {totalGreenMins}' {lang==="pl" ? "łącznie" : "total"}
-                        </span>
+                        <span style={{ color:"#6bcb77" }}>🟢 {greenRows.length} {lang==="pl" ? "dni" : "days"}</span>
+                        <span style={{ color:"#6bcb77", fontWeight:700 }}>{totalGreenMins}' {lang==="pl" ? "łącznie" : "total"}</span>
                       </div>
                     </div>
                     <div style={{ overflowX:"auto" }}>
@@ -2208,22 +2203,12 @@ export default function ORSimV5() {
                             const isGreen = r.free >= MIN_SLOT;
                             return (
                               <tr key={r.dayIdx} style={{ background: isGreen ? "#6bcb7708" : "transparent" }}>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:color, fontWeight:600 }}>
-                                  D{r.dayIdx + 1}
-                                </td>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                                  color: r.lastEnd > END ? "#ff6b6b" : "#888" }}>
-                                  {minToTime(r.lastEnd)}
-                                </td>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight: isGreen ? 700 : 400,
-                                  color: isGreen ? "#6bcb77" : "#555" }}>
-                                  {r.free}'
-                                </td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color, fontWeight:600 }}>D{r.dayIdx+1}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.lastEnd>END?"#ff6b6b":"#888" }}>{minToTime(r.lastEnd)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:isGreen?700:400, color:isGreen?"#6bcb77":"#555" }}>{r.free}'</td>
                                 <td style={{ fontSize:10 }}>
                                   {isGreen
-                                    ? <span style={{ color:"#6bcb77", fontWeight:700 }}>
-                                        🟢 {lang==="pl" ? "dodatkowa op." : "extra op. fits"}
-                                      </span>
+                                    ? <span style={{ color:"#6bcb77", fontWeight:700 }}>🟢 {lang==="pl"?"dodatkowa op.":"extra op. fits"}</span>
                                     : <span style={{ color:"#333" }}>—</span>}
                                 </td>
                               </tr>
@@ -2244,7 +2229,6 @@ export default function ORSimV5() {
               );
             })()}
           </div>
-        </div>
         );
       })()}
 
