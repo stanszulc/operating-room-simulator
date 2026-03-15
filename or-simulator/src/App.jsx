@@ -1252,7 +1252,7 @@ export default function ORSimV5() {
         ? slotsRobust.filter(s => s.proc !== null)
         : validPlan;
 
-      const nIter = Math.max(1, iterOverride ?? mcIterations);
+      const nIter = Math.max(1, (typeof iterOverride === "number" ? iterOverride : null) ?? mcIterations);
       const results = {};
       for (const mode of modes) {
         const planForMode = mode === "robust" ? robustPlanForMC : validPlan;
@@ -2260,13 +2260,6 @@ export default function ORSimV5() {
                 fontFamily:"'Syne',sans-serif",
               }}>
                 {mcRunning ? t.monte.running : t.monte.runBtn}
-              </button>
-              <button onClick={() => runMonteCarlo(1)} disabled={mcRunning} style={{
-                padding:"10px 16px", background:"#1a1a24", border:"1px solid #a78bfa44",
-                color:"#a78bfa", borderRadius:8, fontSize:12, fontWeight:600,
-                cursor: mcRunning ? "not-allowed" : "pointer", fontFamily:"'Syne',sans-serif",
-              }}>
-                🔍 1×
               </button>
               <span style={{ fontSize:10, color:"#333", fontFamily:"'JetBrains Mono',monospace" }}>
                 {t.monte.hint}
