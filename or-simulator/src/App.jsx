@@ -2488,7 +2488,7 @@ export default function ORSimV5() {
               <div className="card">
                 <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
                   marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-                  {lang==="pl" ? "Porównanie — Plan bazowy vs Rolling Horizon" : "Comparison — Base plan vs Rolling Horizon"}
+                  {lang==="pl" ? `Porównanie — Plan bazowy (${MODE_CONFIG[planMode].label}) vs Rolling Horizon` : `Comparison — Base plan (${MODE_CONFIG[planMode].label}) vs Rolling Horizon`}
                 </div>
                 <table style={{ width:"100%", borderCollapse:"collapse" }}>
                   <thead><tr>
