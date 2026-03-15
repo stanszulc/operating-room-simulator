@@ -1248,7 +1248,7 @@ export default function ORSimV5() {
     setTimeout(() => {
       const modes = ["mean", "p50", "p80", "custom", "robust"];
       // for robust mode — use optimized plan if available
-      const robustPlanForMC = slotsRobust
+      const robustPlanForMC = (slotsRobust && slotsRobust.filter(s => s.proc !== null).length > 0)
         ? slotsRobust.filter(s => s.proc !== null)
         : validPlan;
 
@@ -1261,6 +1261,7 @@ export default function ORSimV5() {
         const totalPlannedMins = [], totalActualMins = [], opsOnTime = [], opsLate = [], daysToFinish = [];
         for (let i = 0; i < nIter; i++) {
           const sim = simulateMultiDay(planForMode, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
+          if (i === 0 && mode === "mean") console.log("sim debug:", sim, "planForMode:", planForMode, "numDays:", numDays);
           const allR = sim.flatMap(d => d.rows).filter(r => !r.isSor);
           const lastE = sim.at(-1)?.lastEnd ?? END;
           const totalD = allR.reduce((a, r) => a + Math.max(0, r.delay), 0);
@@ -1326,7 +1327,7 @@ export default function ORSimV5() {
       setMcResults(results);
       setMcRunning(false);
     }, 50);
-  }, [slots, procParams, matrix, customOffsets, numDays, overtimeLimit, disruptions, mcIterations]);
+  }, [slots, slotsRobust, procParams, matrix, customOffsets, numDays, overtimeLimit, disruptions, mcIterations, revenuePerMin, overtimeCostPerMin]);
 
   const handleRandomize = () => {
     setSlots(buildRandomPlan(opsCount));
@@ -2238,7 +2239,7 @@ export default function ORSimV5() {
         <div style={{ display:"grid", gap:14 }}>
 
           {/* ── current run summary ── */}
-          {(() => {
+          {days.length > 0 && days[0].rows.length > 0 && (() => {
             const HARD_END = END + overtimeLimit;
             const runSummary = (d, label, color) => {
               const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
