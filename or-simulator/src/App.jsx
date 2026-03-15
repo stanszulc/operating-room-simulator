@@ -49,6 +49,7 @@ const T = {
       params:   "3. Rozkłady czasów realizacji",
       gantt:    "4. Gantt (wyniki)",
       monte:    "5. Analiza Monte Carlo",
+      optimize: "6. Optymalizacja",
     },
     schedule: {
       title: "Zbuduj plan operacyjny",
@@ -178,6 +179,7 @@ const T = {
       params:   "3. Distribution of realization times",
       gantt:    "4. Gantt (results)",
       monte:    "5. Monte Carlo Analysis",
+      optimize: "6. Optimization",
     },
     schedule: {
       title: "Build the operating schedule",
@@ -422,6 +424,69 @@ function optimizePlan(slots, procParams, matrix, gamma, overtimeLimit, numDays, 
 
   return { slots: newSlots, dayPlans: null, totalDays: numDays, saved: 0 };
 }
+// ── Rolling Horizon Optimizer ─────────────────────────────────────────────
+// Builds per-day schedule using P50. After each day's ops are placed,
+// checks remaining time and borrows shortest op from next N days.
+// Returns dayPlans: array of days, each day is array of {proc, chir}.
+// Total ops = numDays × validSlots.length (no fictional ops created).
+function buildRollingHorizonPlan(slots, procParams, overtimeLimit, numDays, planningWindow) {
+  const validSlots = slots.filter(s => s.proc !== null);
+  if (validSlots.length === 0) return [];
+
+  const HARD_END = END + overtimeLimit;
+
+  // Score each op by p50
+  const score = (op) => {
+    const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+    return { ...op, p50: Math.round(lognormP50(mu, sigma)) };
+  };
+
+  // Build initial schedule: each day has same ops as base plan
+  let schedule = Array.from({ length: numDays }, () =>
+    validSlots.map(s => score({ ...s }))
+  );
+
+  for (let d = 0; d < schedule.length; d++) {
+    // Calculate time used today with P50
+    let usedTime = 0;
+    for (const op of schedule[d]) {
+      usedTime += (usedTime > 0 ? PREP : 0) + op.p50;
+    }
+    let timeLeft = HARD_END - START - usedTime;
+
+    // Cascade: borrow shortest fitting op from next N days
+    let borrowed = true;
+    while (borrowed && timeLeft >= PREP + 55) { // 55 = shortest op
+      borrowed = false;
+      let bestOp = null, bestDay = -1, bestIdx = -1;
+
+      for (let fd = d + 1; fd <= Math.min(d + planningWindow, schedule.length - 1); fd++) {
+        for (let oi = 0; oi < schedule[fd].length; oi++) {
+          const op = schedule[fd][oi];
+          if (PREP + op.p50 <= timeLeft) {
+            if (!bestOp || op.p50 < bestOp.p50) {
+              bestOp = op; bestDay = fd; bestIdx = oi;
+            }
+          }
+        }
+      }
+
+      if (bestOp) {
+        schedule[d].push({ ...bestOp, isAccelerated: true, fromDay: bestDay });
+        schedule[bestDay].splice(bestIdx, 1);
+        usedTime += PREP + bestOp.p50;
+        timeLeft = HARD_END - START - usedTime;
+        borrowed = true;
+      }
+    }
+  }
+
+  // Remove empty days at end, strip p50 scoring
+  return schedule
+    .filter(day => day.length > 0)
+    .map(day => day.map(({ p50, ...op }) => op));
+}
+
 function samplePoisson(lambda) {
   // Knuth algorithm
   const L = Math.exp(-lambda);
@@ -802,7 +867,123 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
   return {
     base:   runPlan(baseFn, plan),
     robust: runPlan(robustFn, planForRobust),
+    draws,
   };
+}
+
+// ── Simulate Optimized Plan (Rolling Horizon) ────────────────────────────
+// Takes dayPlans (variable ops per day) and pre-drawn actuals from simulateDual.
+// Uses same random draws for fair comparison.
+function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptions = {}) {
+  const { sorPriority = "end" } = disruptions;
+  const HARD_END = END + overtimeLimit;
+
+  let carryQueue = [];
+  let sorCarryQueue = [];
+  let globalPlanId = 0;
+  const days = [];
+  const totalDays = dayPlans.length;
+
+  // Build flat actuals pool from draws (reuse same random values)
+  const actualsPool = draws.flatMap(d => d.actuals);
+  let actualIdx = 0;
+
+  for (let d = 0; d < totalDays; d++) {
+    const draw = draws[Math.min(d, draws.length - 1)];
+    const { startDelay, sorCases } = draw;
+
+    const todaySorCarry = [...sorCarryQueue];
+    sorCarryQueue = [];
+
+    const freshOps = dayPlans[d].map(op => ({
+      ...op, planId: ++globalPlanId, isCarryOver: false, isAccelerated: op.isAccelerated ?? false
+    }));
+    const todayPlan = [
+      ...carryQueue.map(op => ({ ...op, isCarryOver: true })),
+      ...freshOps,
+    ];
+    carryQueue = [];
+
+    let tReal = START + startDelay;
+    let tPlan = START;
+    const rows = [];
+    let overflowed = false;
+
+    // SOR carry from previous day
+    for (const sor of todaySorCarry) {
+      if (tReal + sor.duration <= HARD_END) {
+        rows.push({
+          id: rows.length+1, planId:"SOR", dayIdx:d, chir:"SOR",
+          proc:"Emergency (SOR)", isCarryOver:true, isSor:true,
+          startPlan:tReal, endPlan:tReal+sor.duration,
+          startReal:tReal, endReal:tReal+sor.duration,
+          planned:sor.duration, actual:sor.duration, delay:0,
+        });
+        tReal += sor.duration + PREP;
+        tPlan = tReal;
+      } else {
+        sorCarryQueue.push(sor);
+      }
+    }
+
+    for (let i = 0; i < todayPlan.length; i++) {
+      const op = todayPlan[i];
+      const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+      const skill = SURGEON_SKILL[op.chir] ?? 1;
+      const actual = op.isCarryOver
+        ? Math.max(15, Math.round(randLognorm(mu, sigma) * skill))
+        : Math.max(15, actualsPool[actualIdx++ % actualsPool.length]);
+      const planned = getGlobalPlanned(procParams, op.proc, "p50", {});
+      const startReal = Math.max(tReal, START);
+      const endReal = startReal + actual;
+      const endPlan = tPlan + planned;
+
+      if (overflowed || endPlan > HARD_END || endReal > HARD_END) {
+        overflowed = true;
+        carryQueue.push({ ...op });
+        continue;
+      }
+
+      rows.push({
+        id: rows.length+1, planId: op.planId, dayIdx: d,
+        chir: op.chir, proc: op.proc,
+        isCarryOver: op.isCarryOver, isAccelerated: op.isAccelerated ?? false, isSor: false,
+        startDelay: i === 0 ? startDelay : 0,
+        startPlan: tPlan, endPlan,
+        startReal, endReal,
+        planned, actual, delay: actual - planned,
+      });
+      tReal = endReal + PREP;
+      tPlan = endPlan + PREP;
+    }
+
+    if (sorPriority === "end") {
+      for (const sor of sorCases) {
+        if (!overflowed && tReal + sor.duration <= HARD_END) {
+          rows.push({
+            id: rows.length+1, planId:"SOR", dayIdx:d, chir:"SOR",
+            proc:"Emergency (SOR)", isCarryOver:false, isSor:true,
+            startPlan:tReal, endPlan:tReal+sor.duration,
+            startReal:tReal, endReal:tReal+sor.duration,
+            planned:sor.duration, actual:sor.duration, delay:0,
+          });
+          tReal += sor.duration + PREP;
+        } else {
+          sorCarryQueue.push(sor);
+        }
+      }
+    }
+
+    days.push({
+      dayIdx: d, rows,
+      carryOverCount: carryQueue.length,
+      sorCarryCount: sorCarryQueue.length,
+      lastEnd: rows.at(-1)?.endReal ?? START,
+      startDelay, sorCount: sorCases.length,
+    });
+  }
+
+  return days;
 }
 
 function minToTime(m) {
@@ -1092,7 +1273,8 @@ function MultiDayGantt({ days, planColor, t }) {
     <div>
       {days.map(({ dayIdx, rows, lastEnd, startDelay, sorCount }) => {
         const overtime = lastEnd > END;
-        const carryOvers = rows.filter(r => r.isCarryOver).length;
+        const carryOvers = rows.filter(r => r.isCarryOver && !r.isSor).length;
+        const accelerated = rows.filter(r => r.isAccelerated).length;
         return (
           <div key={dayIdx} style={{ marginBottom:20 }}>
             {/* day header */}
@@ -1104,6 +1286,11 @@ function MultiDayGantt({ days, planColor, t }) {
                 {carryOvers > 0 && (
                   <span style={{ fontSize:10, color:"#ff2244", fontFamily:"'JetBrains Mono',monospace", background:"#ff224422", padding:"2px 7px", borderRadius:4 }}>
                     {t.carryOver}: {carryOvers}
+                  </span>
+                )}
+                {accelerated > 0 && (
+                  <span style={{ fontSize:10, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace", background:"#6bcb7722", padding:"2px 7px", borderRadius:4 }}>
+                    ⏩ +{accelerated}
                   </span>
                 )}
                 {startDelay > 0 && (
@@ -1133,9 +1320,10 @@ function MultiDayGantt({ days, planColor, t }) {
                   {rows.map(row => (
                     <div key={row.id} style={{ display:"grid", gridTemplateColumns:"120px 1fr", alignItems:"center" }}>
                       <div style={{ fontSize:10, fontFamily:"'JetBrains Mono',monospace", paddingRight:8,
-                        color: row.isSor ? "#ff2244" : row.isCarryOver ? "#ff2244" : "#666" }}>
+                        color: row.isSor ? "#ff2244" : row.isAccelerated ? "#6bcb77" : row.isCarryOver ? "#ff2244" : "#666" }}>
                         {row.isSor && <span style={{ fontSize:9, color:"#ff2244" }}>🚨 </span>}
-                        {row.isCarryOver && !row.isSor && <span style={{ fontSize:9, color:"#ff2244" }}>↩ </span>}
+                        {row.isCarryOver && !row.isSor && !row.isAccelerated && <span style={{ fontSize:9, color:"#ff2244" }}>↩ </span>}
+                        {row.isAccelerated && <span style={{ fontSize:9, color:"#6bcb77" }}>⏩ </span>}
                         {row.startDelay > 0 && <span style={{ fontSize:9, color:"#ff9f43" }}>⏱ </span>}
                         <span style={{ color: row.isSor ? "#ff2244" : "#555" }}>#{row.planId ?? "—"} </span>
                         Op {row.id} · <span style={{ color: row.isSor ? "#ff2244" : row.isCarryOver ? "#ff2244" : SURGEON_COLORS[row.chir] }}>{row.chir}</span>
@@ -1184,6 +1372,7 @@ export default function ORSimV5() {
   const [slots, setSlots]               = useLocalStorage("or_slots", buildRandomPlan(6));
   const [slotsRobust, setSlotsRobust]   = useState(null);
   const [optimizedDayPlans, setOptimizedDayPlans] = useState(null); // reserved for future use
+  const [daysOptimized, setDaysOptimized] = useState(null); // rolling horizon result
 
   // disruption state
   const [enableDelay, setEnableDelay]   = useLocalStorage("or_enableDelay", false);
@@ -1224,9 +1413,13 @@ export default function ORSimV5() {
     if (validPlan.length === 0) return;
     setRuns(r => r + 1);
     const robustPlan = slotsRobust ? slotsRobust.filter(s => s.proc !== null) : null;
-    setDualDays(simulateDual(validPlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustPlan));
+    const result = simulateDual(validPlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustPlan);
+    setDualDays(result);
+    // build rolling horizon plan and simulate with same draws
+    const rhDayPlans = buildRollingHorizonPlan(slots, procParams, overtimeLimit, numDays, planningWindow);
+    setDaysOptimized(simulateOptimized(rhDayPlans, procParams, result.draws, overtimeLimit, disruptions));
     setActiveTab("gantt");
-  }, [slots, slotsRobust, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority]);
+  }, [slots, slotsRobust, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority, planningWindow]);
 
   const handleModeChange = (mode) => {
     setPlanMode(mode);
@@ -2230,6 +2423,129 @@ export default function ORSimV5() {
                 </div>
               );
             })()}
+          </div>
+        );
+      })()}
+
+      {/* ── OPTIMIZE tab ── */}
+      {activeTab === "optimize" && (() => {
+        const planColor = MODE_CONFIG[planMode].color;
+        const optColor = "#6bcb77";
+        const baseDays = numDays;
+        const optDays = daysOptimized ? daysOptimized.length : null;
+        const saved = optDays !== null ? Math.max(0, baseDays - optDays) : null;
+
+        const summary = (d, totalD) => {
+          if (!d) return null;
+          const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
+          const totalOTMin = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
+          const eff = allR.length ? ((allR.reduce((a,r)=>a+r.actual,0)+PREP*(allR.length-1))/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
+          const util = allR.length ? (allR.reduce((a,r)=>a+r.actual,0)/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
+          const otcr = allR.length ? Math.round(allR.filter(r=>r.delay<=0).length/allR.length*100) : 0;
+          const carryOver = allR.filter(r => r.isCarryOver && !r.isAccelerated).length;
+          const accelerated = allR.filter(r => r.isAccelerated).length;
+          const lastEnd = d.at(-1)?.lastEnd ?? END;
+          return { eff, util, otcr, carryOver, accelerated, lastEnd, overtime: lastEnd > END,
+            totalOTMin: Math.round(totalOTMin/totalD), totalActual: allR.reduce((a,r)=>a+r.actual,0) };
+        };
+
+        const baseSum = summary(days, baseDays);
+        const optSum = daysOptimized ? summary(daysOptimized, optDays) : null;
+
+        return (
+          <div style={{ display:"grid", gap:12 }}>
+            {/* header */}
+            <div className="card" style={{ borderLeft:"3px solid #6bcb77" }}>
+              <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#6bcb77", textTransform:"uppercase",
+                marginBottom:12, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                🔧 {lang==="pl" ? "Rolling Horizon Optimizer" : "Rolling Horizon Optimizer"}
+                {" · "}Okno = {planningWindow} {lang==="pl" ? "dni" : "days"}
+              </div>
+              {!daysOptimized ? (
+                <div style={{ color:"#555", fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                  {lang==="pl" ? "Kliknij ▶ Uruchom symulację aby wygenerować wyniki." : "Click ▶ Run simulation to generate results."}
+                </div>
+              ) : (
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:12 }}>
+                  {[
+                    { label: lang==="pl"?"Dni bazowe":"Base days", val: baseDays, color:"#e07b39" },
+                    { label: lang==="pl"?"Dni zoptymalizowane":"Optimized days", val: optDays, color:"#6bcb77" },
+                    { label: lang==="pl"?"Zaoszczędzone dni":"Days saved", val: saved > 0 ? `${saved} 🎯` : "0", color: saved > 0 ? "#6bcb77" : "#555" },
+                    { label: lang==="pl"?"Okno planowania":"Planning window", val: `${planningWindow}d`, color:"#00d4ff" },
+                  ].map(k => (
+                    <div key={k.label} style={{ background:"#0d0d14", borderRadius:8, padding:"12px 16px" }}>
+                      <div style={{ fontSize:22, fontWeight:700, color:k.color, fontFamily:"'JetBrains Mono',monospace" }}>{k.val}</div>
+                      <div style={{ fontSize:10, color:"#555", marginTop:4 }}>{k.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* comparison table */}
+            {daysOptimized && baseSum && optSum && (
+              <div className="card">
+                <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+                  marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                  {lang==="pl" ? "Porównanie — Plan bazowy vs Rolling Horizon" : "Comparison — Base plan vs Rolling Horizon"}
+                </div>
+                <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                  <thead><tr>
+                    {["KPI", lang==="pl"?"Plan bazowy":"Base plan", "Rolling Horizon", lang==="pl"?"Różnica":"Diff"]
+                      .map((h,i) => <th key={i} style={{ color: i===1?planColor:i===2?optColor:"#444" }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {[
+                      { label: lang==="pl"?"Liczba dni":"Days", base: baseDays, opt: optDays, fmt: v=>`${v}d`, better: "less" },
+                      { label: lang==="pl"?"Koniec ostatniego dnia":"Last day end", base: minToTime(baseSum.lastEnd), opt: minToTime(optSum.lastEnd), fmt: v=>v, better: "less" },
+                      { label: lang==="pl"?"Carry-over ↩":"Carry-over ↩", base: baseSum.carryOver, opt: optSum.carryOver, fmt: v=>`${v}`, better: "less" },
+                      { label: lang==="pl"?"Przyspieszone ⏩":"Accelerated ⏩", base: 0, opt: optSum.accelerated, fmt: v=>`${v}`, better: "more" },
+                      { label: "OTCR%", base: `${baseSum.otcr}%`, opt: `${optSum.otcr}%`, fmt: v=>v, better: "more" },
+                      { label: lang==="pl"?"Efektywność":"Efficiency", base: `${baseSum.eff}%`, opt: `${optSum.eff}%`, fmt: v=>v, better: "more" },
+                      { label: lang==="pl"?"Wykorzystanie":"Utilization", base: `${baseSum.util}%`, opt: `${optSum.util}%`, fmt: v=>v, better: "more" },
+                      { label: lang==="pl"?"Nadgodziny śr.":"Avg OT", base: `${baseSum.totalOTMin}'`, opt: `${optSum.totalOTMin}'`, fmt: v=>v, better: "less" },
+                    ].map(row => {
+                      const bNum = parseFloat(row.base);
+                      const oNum = parseFloat(row.opt);
+                      const diff = isNaN(bNum)||isNaN(oNum) ? "—" : (() => {
+                        const d = oNum - bNum;
+                        return d === 0 ? "—" : `${d>0?"+":""}${d.toFixed(typeof row.base==="string"&&row.base.includes(".")?1:0)}`;
+                      })();
+                      const diffColor = isNaN(bNum)||isNaN(oNum) ? "#555" :
+                        oNum < bNum ? (row.better==="less"?"#6bcb77":"#ff6b6b") :
+                        oNum > bNum ? (row.better==="more"?"#6bcb77":"#ff6b6b") : "#555";
+                      return (
+                        <tr key={row.label}>
+                          <td style={{ color:"#666", fontSize:11 }}>{row.label}</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", color:planColor, fontWeight:600 }}>{row.base}</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", color:optColor, fontWeight:600 }}>{row.opt}</td>
+                          <td style={{ fontFamily:"'JetBrains Mono',monospace", color:diffColor, fontWeight:700 }}>{diff}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* two gantts */}
+            {daysOptimized && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                <div className="card" style={{ borderTop:`2px solid ${planColor}` }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:planColor, marginBottom:10 }}>
+                    {lang==="pl"?"Plan bazowy":"Base plan"} · {baseDays} {lang==="pl"?"dni":"days"}
+                  </div>
+                  <MultiDayGantt days={days} planColor={planColor} t={t.gantt} />
+                </div>
+                <div className="card" style={{ borderTop:`2px solid ${optColor}` }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:optColor, marginBottom:10 }}>
+                    Rolling Horizon · {optDays} {lang==="pl"?"dni":"days"}
+                    {saved > 0 && <span style={{ color:"#6bcb77", fontSize:11, marginLeft:8 }}>🎯 -{saved}d</span>}
+                  </div>
+                  <MultiDayGantt days={daysOptimized} planColor={optColor} t={t.gantt} />
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
