@@ -75,10 +75,11 @@ const T = {
     planning: {
       modeTitle: "Tryb wyznaczania planu operacji",
       modes: {
-        mean:   { label: "Średnia",       desc: "zawyżona przez długie operacje" },
-        p50:    { label: "P50 (mediana)", desc: "50% operacji przekroczy plan" },
-        p80:    { label: "P80",           desc: "tylko 20% przekroczy plan" },
+        mean:   { label: "Średnia",       desc: "globalny rozkład procedury" },
+        p50:    { label: "P50 (mediana)", desc: "globalny — 50% przekroczy plan" },
+        p80:    { label: "P80",           desc: "globalny — tylko 20% przekroczy" },
         custom: { label: "Własny",        desc: "ręczna korekta per procedura" },
+        robust: { label: "Robust",        desc: "P80 per chirurg × procedura" },
       },
       explainTitle: "Dlaczego planowanie ze średniej jest błędem?",
       explainBody: "Rozkład log-normalny ma długi ogon po prawej — kilka bardzo długich operacji zawyża średnią znacznie powyżej mediany. Jeśli planujemy ze średniej,",
@@ -126,7 +127,7 @@ const T = {
       avgDelay: "Średnie opóźnienie (min)",
       p80Delay: "P80 opóźnienia (min)",
       avgEnd: "Średni koniec dnia",
-      modes: { mean: "Średnia", p50: "P50", p80: "P80", custom: "Własny" },
+      modes: { mean: "Średnia", p50: "P50", p80: "P80", custom: "Własny", robust: "Robust" },
       histTitle: "Rozkład godziny końca dnia",
       summaryTitle: "Podsumowanie — 4 strategie planowania",
       headers: ["Strategia", "% nadgodzin", "% carry-over", "Śr. opóźnienie", "P80 opóźnienia", "Śr. koniec"],
@@ -203,10 +204,11 @@ const T = {
     planning: {
       modeTitle: "Planning mode",
       modes: {
-        mean:   { label: "Mean",          desc: "inflated by long outlier ops" },
-        p50:    { label: "P50 (median)",  desc: "50% of ops will exceed plan" },
-        p80:    { label: "P80",           desc: "only 20% will exceed plan" },
+        mean:   { label: "Mean",          desc: "global procedure distribution" },
+        p50:    { label: "P50 (median)",  desc: "global — 50% will exceed plan" },
+        p80:    { label: "P80",           desc: "global — only 20% will exceed" },
         custom: { label: "Custom",        desc: "manual offset per procedure" },
+        robust: { label: "Robust",        desc: "P80 per surgeon × procedure" },
       },
       explainTitle: "Why planning from the mean is a mistake?",
       explainBody: "The log-normal distribution has a long right tail — a few very long operations inflate the mean well above the median. Planning from the mean means",
@@ -254,7 +256,7 @@ const T = {
       avgDelay: "Avg delay (min)",
       p80Delay: "P80 delay (min)",
       avgEnd: "Avg end of day",
-      modes: { mean: "Mean", p50: "P50", p80: "P80", custom: "Custom" },
+      modes: { mean: "Mean", p50: "P50", p80: "P80", custom: "Custom", robust: "Robust" },
       histTitle: "Distribution of end-of-day time",
       summaryTitle: "Summary — 4 planning strategies",
       headers: ["Strategy", "% overtime", "% carry-over", "Avg delay", "P80 delay", "Avg end"],
@@ -324,7 +326,30 @@ function generateHistory(procParams, n = SIM_HISTORY) {
   return matrix;
 }
 
+// Global plan — no surgeon differentiation (as a human planner would do manually)
+function getGlobalPlanned(procParams, proc, planMode, customOffsets) {
+  const { mu, sigma } = procParams[proc] ?? { mu: 4.06, sigma: 0.28 };
+  let base;
+  if (planMode === "mean") base = Math.round(lognormMean(mu, sigma));
+  else if (planMode === "p80")  base = Math.round(lognormP80(mu, sigma));
+  else                          base = Math.round(lognormP50(mu, sigma)); // p50
+  const offset = customOffsets?.[proc] ?? 0;
+  return Math.max(10, Math.round((base + offset) / 5) * 5);
+}
+
+// Robust plan — uses surgeon × procedure matrix (per-surgeon statistics)
 function getPlanned(matrix, proc, surg, planMode, customOffsets) {
+  if (planMode === "robust") {
+    const cell = matrix[proc]?.[surg];
+    if (!cell) return 60;
+    const level = customOffsets?._level ?? 0.8; // default P80
+    // interpolate between p50 and p80 based on level
+    const base = level <= 0.5 ? cell.p50
+               : level >= 0.8 ? cell.p80
+               : Math.round(cell.p50 + (cell.p80 - cell.p50) * ((level - 0.5) / 0.3));
+    const offset = customOffsets?.[proc] ?? 0;
+    return Math.max(10, Math.round((base + offset) / 5) * 5);
+  }
   const cell = matrix[proc]?.[surg];
   if (!cell) return 60;
   let base;
@@ -357,6 +382,12 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
   const HARD_END = END + overtimeLimit;
   let carryQueue = [];
   let globalPlanId = 0;
+
+  // helper — picks global or robust planning based on mode
+  const calcPlanned = (proc, surg) => {
+    if (planMode === "robust") return getPlanned(matrix, proc, surg, "robust", customOffsets);
+    return getGlobalPlanned(procParams, proc, planMode, customOffsets);
+  };
 
   const days = [];
 
@@ -414,7 +445,7 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
       const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
       const skill = SURGEON_SKILL[op.chir] ?? 1;
       const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
-      const planned = getPlanned(matrix, op.proc, op.chir, planMode, customOffsets);
+      const planned = calcPlanned(op.proc, op.chir);
 
       const startReal = Math.max(tReal, START);
       const endReal = startReal + actual;
@@ -474,6 +505,145 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
   }
 
   return days;
+}
+
+// ── Dual simulation — same actuals, two plans ─────────────────────────────
+// Returns { base: days[], robust: days[] } using same random draws
+function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions = {}) {
+  const { enableDelay=false, delayOnTime=0.7, delayMean=20,
+          enableSor=false, sorLambda=1, sorDuration=60, sorPriority="end" } = disruptions;
+  const HARD_END = END + overtimeLimit;
+
+  // Pre-generate all random draws for the entire period
+  // Each op per day gets: actual duration, SOR cases, start delay
+  const draws = Array.from({ length: numDays }, (_, d) => {
+    const startDelay = enableDelay ? sampleStartDelay(delayOnTime, delayMean) : 0;
+    const sorCases = [];
+    if (enableSor) {
+      const nSor = samplePoisson(sorLambda);
+      for (let s = 0; s < nSor; s++) {
+        const arrivalMin = START + Math.floor(Math.random() * (END - START));
+        const duration = Math.max(20, Math.round(-sorDuration * Math.log(Math.max(Math.random(), 1e-10))));
+        sorCases.push({ arrivalMin, duration });
+      }
+      sorCases.sort((a, b) => a.arrivalMin - b.arrivalMin);
+    }
+    // pre-draw actuals for each plan slot
+    const actuals = plan.map(op => {
+      const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+      const skill = SURGEON_SKILL[op.chir] ?? 1;
+      return Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
+    });
+    return { startDelay, sorCases, actuals };
+  });
+
+  // Run one plan variant using pre-drawn actuals
+  const runPlan = (planModeFn) => {
+    let carryQueue = [];
+    let globalPlanId = 0;
+    const days = [];
+
+    for (let d = 0; d < numDays; d++) {
+      const { startDelay, sorCases, actuals } = draws[d];
+      const freshOps = plan.map((op, i) => ({ ...op, planId: ++globalPlanId, isCarryOver: false, _actualIdx: i }));
+      const todayPlan = [
+        ...carryQueue.map(op => ({ ...op, isCarryOver: true })),
+        ...freshOps,
+      ];
+      carryQueue = [];
+
+      let tReal = START + startDelay;
+      let tPlan = START;
+      const rows = [];
+      let overflowed = false;
+      let sorQueue = [...sorCases];
+      let freshIdx = 0; // index into pre-drawn actuals
+
+      for (let i = 0; i < todayPlan.length; i++) {
+        const op = todayPlan[i];
+
+        if (sorPriority === "preempt") {
+          while (sorQueue.length > 0 && sorQueue[0].arrivalMin <= tReal) {
+            const sor = sorQueue.shift();
+            if (!overflowed && tReal + sor.duration <= HARD_END) {
+              rows.push({
+                id: rows.length+1, planId:"SOR", dayIdx:d, chir:"SOR",
+                proc:"Emergency (SOR)", isCarryOver:false, isSor:true,
+                startPlan:tReal, endPlan:tReal+sor.duration,
+                startReal:tReal, endReal:tReal+sor.duration,
+                planned:sor.duration, actual:sor.duration, delay:0,
+              });
+              tReal += sor.duration + PREP;
+              tPlan = tReal;
+            }
+          }
+        }
+
+        const planned = planModeFn(op.proc, op.chir);
+        // use pre-drawn actual for fresh ops; for carry-overs re-draw
+        const actual = op.isCarryOver
+          ? Math.max(15, Math.round(randLognorm(
+              procParams[op.proc]?.mu ?? 4.06,
+              procParams[op.proc]?.sigma ?? 0.28
+            ) * (SURGEON_SKILL[op.chir] ?? 1)))
+          : (actuals[op._actualIdx] ?? actuals[freshIdx++ % actuals.length]);
+
+        const startReal = Math.max(tReal, START);
+        const endReal = startReal + actual;
+        const startPlan = tPlan;
+        const endPlan = startPlan + planned;
+
+        if (overflowed || endPlan > HARD_END || endReal > HARD_END) {
+          overflowed = true;
+          carryQueue.push({ proc: op.proc, chir: op.chir, planId: op.planId, _actualIdx: op._actualIdx });
+          continue;
+        }
+
+        rows.push({
+          id: rows.length+1, planId: op.planId, dayIdx: d,
+          chir: op.chir, proc: op.proc,
+          isCarryOver: op.isCarryOver, isSor: false,
+          startDelay: i === 0 ? startDelay : 0,
+          startPlan, endPlan, startReal, endReal,
+          planned, actual, delay: actual - planned,
+        });
+
+        tReal = endReal + PREP;
+        tPlan = endPlan + PREP;
+      }
+
+      if (sorPriority === "end") {
+        for (const sor of sorCases) {
+          if (!overflowed && tReal + sor.duration <= HARD_END) {
+            rows.push({
+              id: rows.length+1, planId:"SOR", dayIdx:d, chir:"SOR",
+              proc:"Emergency (SOR)", isCarryOver:false, isSor:true,
+              startPlan:tReal, endPlan:tReal+sor.duration,
+              startReal:tReal, endReal:tReal+sor.duration,
+              planned:sor.duration, actual:sor.duration, delay:0,
+            });
+            tReal += sor.duration + PREP;
+          }
+        }
+      }
+
+      days.push({
+        dayIdx: d, rows,
+        carryOverCount: carryQueue.length,
+        lastEnd: rows.at(-1)?.endReal ?? START,
+        startDelay, sorCount: sorCases.length,
+      });
+    }
+    return days;
+  };
+
+  const baseFn   = (proc, surg) => getGlobalPlanned(procParams, proc, planMode, customOffsets);
+  const robustFn = (proc, surg) => getPlanned(matrix, proc, surg, "robust", { ...customOffsets, _level: robustLevel });
+
+  return {
+    base:   runPlan(baseFn),
+    robust: runPlan(robustFn),
+  };
 }
 
 function minToTime(m) {
@@ -564,18 +734,21 @@ function buildEmptySlots(n) {
   return Array.from({ length: n }, () => ({ proc: null, chir: "A" }));
 }
 
-function MiniGantt({ slots, matrix, planMode, customOffsets, planColor, numDays }) {
+function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planColor, numDays }) {
   const filledSlots = slots.filter(s => s.proc !== null);
   if (filledSlots.length === 0) return null;
   const W = 460;
-  // build bars per day — same plan repeats each day, LP is continuous
+  const calcDur = (s) => planMode === "robust"
+    ? getPlanned(matrix, s.proc, s.chir, "robust", customOffsets)
+    : getGlobalPlanned(procParams, s.proc, planMode, customOffsets);
+
   const days = Array.from({ length: numDays }, (_, d) => {
     let t = START;
     const bars = filledSlots.map((s, i) => {
-      const dur = getPlanned(matrix, s.proc, s.chir, planMode, customOffsets);
+      const dur = calcDur(s);
       const start = t; const end = t + dur;
       t = end + PREP;
-      const lp = d * filledSlots.length + i + 1; // continuous LP
+      const lp = d * filledSlots.length + i + 1;
       return { ...s, start, end, dur, lp };
     });
     const lastEnd = bars[bars.length - 1].end;
@@ -584,9 +757,12 @@ function MiniGantt({ slots, matrix, planMode, customOffsets, planColor, numDays 
 
   return (
     <div style={{ marginTop:20, background:"#0a0a0f", borderRadius:8, padding:"14px 16px", border:"1px solid #1e1e2a" }}>
-      <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-        fontFamily:"'JetBrains Mono',monospace", marginBottom:12 }}>
-        Plan preview · {planMode.toUpperCase()} · {numDays} {numDays === 1 ? "day" : "days"}
+      <div style={{ fontSize:10, letterSpacing:"0.1em", color: planColor, textTransform:"uppercase",
+        fontFamily:"'JetBrains Mono',monospace", marginBottom:8, fontWeight:700 }}>
+        {planMode === "robust"
+          ? `🛡 Robust P${Math.round((customOffsets?._level ?? 0.8)*100)}`
+          : `Plan · ${planMode.toUpperCase()}`}
+        {" · "}{numDays} {numDays === 1 ? "day" : "days"}
       </div>
       {days.map(({ d, bars, lastEnd, overtime }) => (
         <div key={d} style={{ marginBottom:14 }}>
@@ -634,7 +810,7 @@ function MiniGantt({ slots, matrix, planMode, customOffsets, planColor, numDays 
   );
 }
 
-function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, matrix, planMode, customOffsets, planColor, numDays }) {
+function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, matrix, procParams, planMode, customOffsets, planColor, numDays, robustLevel }) {
   const [dragProc, setDragProc] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [dragSlotIdx, setDragSlotIdx] = useState(null);
@@ -700,7 +876,11 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, mat
             {slots.map((slot, idx) => {
               const color = slot.proc ? PROC_COLORS[slot.proc] : "#333";
               const isOver = dragOverIdx === idx;
-              const dur = slot.proc ? getPlanned(matrix, slot.proc, slot.chir, planMode, customOffsets) : null;
+              const dur = slot.proc
+                ? (planMode === "robust"
+                    ? getPlanned(matrix, slot.proc, slot.chir, "robust", customOffsets)
+                    : getGlobalPlanned(procParams, slot.proc, planMode, customOffsets))
+                : null;
               return (
                 <div key={idx}
                   onDragOver={e => { e.preventDefault(); setDragOverIdx(idx); }}
@@ -732,7 +912,12 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, mat
           </button>
         </div>
       </div>
-      <MiniGantt slots={slots} matrix={matrix} planMode={planMode} customOffsets={customOffsets} planColor={planColor} numDays={numDays} />
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:4 }}>
+        <MiniGantt slots={slots} matrix={matrix} procParams={procParams} planMode={planMode}
+          customOffsets={customOffsets} planColor={planColor} numDays={numDays} />
+        <MiniGantt slots={slots} matrix={matrix} procParams={procParams} planMode="robust"
+          customOffsets={{ ...customOffsets, _level: robustLevel }} planColor="#00d4ff" numDays={numDays} />
+      </div>
     </div>
   );
 }
@@ -848,14 +1033,23 @@ export default function ORSimV5() {
   const [activeTab, setActiveTab] = useState("schedule");
   const [showHelp, setShowHelp] = useState(false);
 
+  const [mcIterations, setMcIterations] = useLocalStorage("or_mcIter", 500);
+  const [revenuePerMin, setRevenuePerMin] = useLocalStorage("or_revenue", 160);
+  const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 10);
+  const [robustLevel, setRobustLevel] = useLocalStorage("or_robustLevel", 0.8);
+
   const t = T[lang];
   const matrix = useMemo(() => generateHistory(procParams), [procParams]);
 
-  const initDays = useMemo(() => {
+  const initDual = useMemo(() => {
     const m = generateHistory(DEFAULT_PROC_PARAMS);
-    return simulateMultiDay(buildRandomPlan(6), DEFAULT_PROC_PARAMS, m, "mean", {}, 3, 60);
+    const plan = buildRandomPlan(6);
+    return simulateDual(plan, DEFAULT_PROC_PARAMS, m, "mean", {}, 0.8, 3, 60);
   }, []);
-  const [days, setDays] = useState(initDays);
+  const [dualDays, setDualDays] = useState(initDual);
+
+  const days = dualDays.base;
+  const daysRobust = dualDays.robust;
 
   const disruptions = { enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority };
 
@@ -863,19 +1057,16 @@ export default function ORSimV5() {
     const validPlan = slots.filter(s => s.proc !== null);
     if (validPlan.length === 0) return;
     setRuns(r => r + 1);
-    setDays(simulateMultiDay(validPlan, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit, disruptions));
+    setDualDays(simulateDual(validPlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions));
     setActiveTab("gantt");
-  }, [slots, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit, enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority]);
+  }, [slots, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority]);
 
   const handleModeChange = (mode) => {
     setPlanMode(mode);
     const validPlan = slots.filter(s => s.proc !== null);
-    setDays(simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions));
+    setDualDays(simulateDual(validPlan, procParams, matrix, mode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions));
   };
 
-  const [mcIterations, setMcIterations] = useLocalStorage("or_mcIter", 500);
-  const [revenuePerMin, setRevenuePerMin] = useLocalStorage("or_revenue", 160); // zł/min
-  const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 10); // 600zł/h = 10zł/min
   const [mcResults, setMcResults] = useState(null);
   const [mcRunning, setMcRunning] = useState(false);
 
@@ -887,7 +1078,7 @@ export default function ORSimV5() {
 
     // run async to allow UI to update
     setTimeout(() => {
-      const modes = ["mean", "p50", "p80", "custom"];
+      const modes = ["mean", "p50", "p80", "custom", "robust"];
 
       const results = {};
       for (const mode of modes) {
@@ -977,7 +1168,9 @@ export default function ORSimV5() {
   const matrixRows = Object.entries(matrix).flatMap(([proc, surgs]) =>
     Object.entries(surgs).map(([surg, { p50, p80, mean }]) => ({
       proc, surg, p50, p80, mean,
-      planned: getPlanned(matrix, proc, surg, planMode, customOffsets),
+      planned: planMode === "robust"
+        ? getPlanned(matrix, proc, surg, "robust", customOffsets)
+        : getGlobalPlanned(procParams, proc, planMode, customOffsets),
     }))
   );
   const scatterData = allRows.map(r => ({
@@ -990,6 +1183,7 @@ export default function ORSimV5() {
     p50:    { color:"#e07b39", ...t.planning.modes.p50 },
     p80:    { color:"#6bcb77", ...t.planning.modes.p80 },
     custom: { color:"#a78bfa", ...t.planning.modes.custom },
+    robust: { color:"#00d4ff", ...t.planning.modes.robust },
   };
 
   return (
@@ -1106,8 +1300,9 @@ export default function ORSimV5() {
             <button onClick={handleRandomize} style={{ background:"#1a1a28", border:"1px solid #252530", color:"#aaa", borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>{t.schedule.randomize}</button>
           </div>
           <ScheduleBuilder slots={slots} setSlots={setSlots} opsCount={opsCount} setOpsCount={setOpsCount}
-            onRun={runSim} t={t.schedule} matrix={matrix} planMode={planMode}
-            customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color} numDays={numDays} />
+            onRun={runSim} t={t.schedule} matrix={matrix} procParams={procParams} planMode={planMode}
+            customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color} numDays={numDays}
+            robustLevel={robustLevel} />
 
           {/* disruption toggles */}
           <div style={{ marginTop:16, borderTop:"1px solid #1e1e2a", paddingTop:16 }}>
@@ -1161,9 +1356,66 @@ export default function ORSimV5() {
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>{t.planning.modeTitle}</div>
             <div style={{ display:"flex", gap:10, marginBottom:16 }}>
-              {Object.entries(MODE_CONFIG).map(([mode, cfg]) => (
+              {Object.entries(MODE_CONFIG).filter(([m]) => m !== "robust").map(([mode, cfg]) => (
                 <ModeBtn key={mode} mode={mode} active={planMode===mode} onClick={handleModeChange} label={cfg.label} desc={cfg.desc} color={cfg.color} />
               ))}
+            </div>
+            {/* robust level slider */}
+            <div style={{ background:"#0d0d1a", borderRadius:8, padding:"12px 16px", marginBottom:12,
+              border:"1px solid #00d4ff33" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <span style={{ fontSize:11, color:"#00d4ff", fontWeight:600, whiteSpace:"nowrap" }}>
+                  🛡 Robust level:
+                </span>
+                <input type="range" min={0.5} max={1.0} step={0.05} value={robustLevel}
+                  onChange={e => setRobustLevel(parseFloat(e.target.value))}
+                  style={{ flex:1, accentColor:"#00d4ff", cursor:"pointer" }} />
+                <span style={{ fontSize:14, fontWeight:700, color:"#00d4ff",
+                  fontFamily:"'JetBrains Mono',monospace", minWidth:40 }}>
+                  P{Math.round(robustLevel*100)}
+                </span>
+              </div>
+              <div style={{ fontSize:10, color:"#555", marginTop:6, fontFamily:"'JetBrains Mono',monospace" }}>
+                {lang==="pl"
+                  ? "Plan Robust używa tego percentyla z macierzy chirurg × procedura"
+                  : "Robust plan uses this percentile from surgeon × procedure matrix"}
+              </div>
+              {/* robust plan preview table */}
+              <div style={{ marginTop:12, overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", fontSize:10 }}>
+                  <thead><tr>
+                    <th style={{ color:"#00d4ff", fontSize:9 }}>{lang==="pl"?"Procedura":"Procedure"}</th>
+                    {SURGEONS.map(s => (
+                      <th key={s} style={{ color:SURGEON_COLORS[s], fontSize:9 }}>
+                        {lang==="pl"?"Chir.":"Surg."} {s}
+                      </th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {PROCS.map(proc => (
+                      <tr key={proc}>
+                        <td style={{ color:"#666", fontSize:10, paddingRight:8 }}>{proc}</td>
+                        {SURGEONS.map(s => {
+                          const cell = matrix[proc]?.[s];
+                          const val = cell
+                            ? Math.max(10, Math.round(
+                                (robustLevel <= 0.5 ? cell.p50
+                                : robustLevel >= 0.8 ? cell.p80
+                                : Math.round(cell.p50 + (cell.p80 - cell.p50) * ((robustLevel - 0.5) / 0.3)))
+                              / 5) * 5)
+                            : "—";
+                          return (
+                            <td key={s} style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color:"#00d4ff", fontWeight:600, textAlign:"center" }}>
+                              {val}'
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <div style={{ background:"#0d0d14", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#555", lineHeight:1.7 }}>
               <strong style={{ color:"#777" }}>{t.planning.explainTitle}</strong><br/>
@@ -1219,7 +1471,7 @@ export default function ORSimV5() {
                   {planMode === "custom" && (
                     <div style={{ marginTop:12, padding:"10px 12px", background:"#0d0d14", borderRadius:6 }}>
                       <Slider label={t.planning.offsetLabel} value={offset} min={-20} max={30} step={5}
-                        onChange={v => { setOffset(proc, v); const vp=slots.filter(s=>s.proc!==null); setDays(simulateMultiDay(vp,procParams,matrix,"custom",{...customOffsets,[proc]:v},numDays,overtimeLimit)); }}
+                        onChange={v => { setOffset(proc, v); const vp=slots.filter(s=>s.proc!==null); setDualDays(simulateDual(vp,procParams,matrix,"custom",{...customOffsets,[proc]:v},robustLevel,numDays,overtimeLimit,disruptions)); }}
                         color={color} />
                       <div style={{ fontSize:10, color:"#555", marginTop:2 }}>{t.planning.offsetBase} ({p50}') + {offset} = <span style={{ color, fontWeight:600 }}>{p50+offset}'</span></div>
                     </div>
@@ -1369,92 +1621,200 @@ export default function ORSimV5() {
       )}
 
       {/* ── GANTT tab ── */}
-      {activeTab === "gantt" && (
-        <div className="card">
-          <div style={{ display:"flex", gap:20, marginBottom:14, flexWrap:"wrap", fontSize:11 }}>
-            <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
-              <span style={{ border:`2px solid ${MODE_CONFIG[planMode].color}`, width:18, height:10, borderRadius:2, display:"inline-block" }} />
-              {t.gantt.planLabel} <strong style={{ color:MODE_CONFIG[planMode].color }}>{MODE_CONFIG[planMode].label}</strong>
-            </span>
-            <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
-              <span style={{ background:"#aaa", width:18, height:10, borderRadius:2, display:"inline-block" }} />
-              {t.gantt.actual}
-            </span>
-            <span style={{ display:"flex", alignItems:"center", gap:6, color:"#ff2244" }}>
-              <span style={{ background:"#ff2244", width:18, height:10, borderRadius:2, display:"inline-block" }} />
-              {t.gantt.carryOver}
-            </span>
-            {enableSor && (
-              <span style={{ display:"flex", alignItems:"center", gap:6, color:"#ff2244" }}>
-                <span style={{ background:"#ff224488", border:"2px dashed #ff2244", width:18, height:10, borderRadius:2, display:"inline-block" }} />
-                🚨 SOR
-              </span>
-            )}
-            {enableDelay && (
-              <span style={{ display:"flex", alignItems:"center", gap:6, color:"#ff9f43" }}>
-                ⏱ {lang === "pl" ? "Opóźnienie startu" : "Start delay"}
-              </span>
-            )}
-            {["A","B","C"].map(s => (
-              <span key={s} style={{ display:"flex", alignItems:"center", gap:5, color:"#666" }}>
-                <span style={{ background:SURGEON_COLORS[s], width:10, height:10, borderRadius:2, display:"inline-block" }} />
-                {t.gantt.surgeon} {s}
-              </span>
-            ))}
-          </div>
-          <MultiDayGantt days={days} planColor={MODE_CONFIG[planMode].color} t={t.gantt} />
+      {activeTab === "gantt" && (() => {
+        const planColor = MODE_CONFIG[planMode].color;
+        const robustColor = "#00d4ff";
 
-          {/* table — all days */}
-          <div style={{ marginTop:20 }}>
+        // summary stats helper
+        const summary = (d) => {
+          const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
+          const overtime = d.at(-1)?.lastEnd > END;
+          const carryOver = d.reduce((a,x)=>a+x.carryOverCount,0);
+          const sumDel = allR.reduce((a,r)=>a+r.delay,0);
+          const eff = allR.length ? ((allR.reduce((a,r)=>a+r.actual,0)+PREP*(allR.length-1))/((END-START)*numDays)*100).toFixed(1) : "—";
+          return { overtime, carryOver, sumDel, eff, lastEnd: d.at(-1)?.lastEnd ?? END };
+        };
+        const baseSum = summary(days);
+        const robustSum = summary(daysRobust);
+
+        return (
+          <div style={{ display:"grid", gap:12 }}>
+            {/* legend */}
+            <div className="card" style={{ padding:"10px 16px" }}>
+              <div style={{ display:"flex", gap:20, flexWrap:"wrap", fontSize:11 }}>
+                <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
+                  <span style={{ border:`2px solid ${planColor}`, width:18, height:10, borderRadius:2, display:"inline-block" }} />
+                  {t.gantt.planLabel} <strong style={{ color:planColor }}>{MODE_CONFIG[planMode].label}</strong>
+                </span>
+                <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
+                  <span style={{ border:`2px solid ${robustColor}`, width:18, height:10, borderRadius:2, display:"inline-block" }} />
+                  <strong style={{ color:robustColor }}>Robust P{Math.round(robustLevel*100)}</strong>
+                </span>
+                <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
+                  <span style={{ background:"#aaa", width:18, height:10, borderRadius:2, display:"inline-block" }} />
+                  {t.gantt.actual}
+                </span>
+                <span style={{ display:"flex", alignItems:"center", gap:6, color:"#ff2244" }}>
+                  <span style={{ background:"#ff2244", width:18, height:10, borderRadius:2, display:"inline-block" }} />
+                  {t.gantt.carryOver}
+                </span>
+                {["A","B","C"].map(s => (
+                  <span key={s} style={{ display:"flex", alignItems:"center", gap:5, color:"#666" }}>
+                    <span style={{ background:SURGEON_COLORS[s], width:10, height:10, borderRadius:2, display:"inline-block" }} />
+                    {t.gantt.surgeon} {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* two gantts side by side */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {/* base plan */}
+              <div className="card" style={{ borderTop:`2px solid ${planColor}` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <span style={{ fontSize:12, fontWeight:700, color:planColor }}>{MODE_CONFIG[planMode].label}</span>
+                  <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
+                    color: baseSum.overtime ? "#ff6b6b" : "#6bcb77" }}>
+                    {minToTime(baseSum.lastEnd)}{baseSum.overtime ? " ⚠" : " ✓"}
+                  </span>
+                </div>
+                <MultiDayGantt days={days} planColor={planColor} t={t.gantt} />
+              </div>
+
+              {/* robust plan */}
+              <div className="card" style={{ borderTop:`2px solid ${robustColor}` }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <span style={{ fontSize:12, fontWeight:700, color:robustColor }}>Robust P{Math.round(robustLevel*100)}</span>
+                  <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
+                    color: robustSum.overtime ? "#ff6b6b" : "#6bcb77" }}>
+                    {minToTime(robustSum.lastEnd)}{robustSum.overtime ? " ⚠" : " ✓"}
+                  </span>
+                </div>
+                <MultiDayGantt days={daysRobust} planColor={robustColor} t={t.gantt} />
+              </div>
+            </div>
+
+            {/* comparison summary */}
+            <div className="card">
+              <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+                marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                {lang==="pl" ? "Porównanie — ten sam dzień, dwa plany" : "Comparison — same day, two plans"}
+              </div>
+              <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                <thead><tr>
+                  {(lang==="pl"
+                    ? ["KPI", MODE_CONFIG[planMode].label, `Robust P${Math.round(robustLevel*100)}`, "Różnica"]
+                    : ["KPI", MODE_CONFIG[planMode].label, `Robust P${Math.round(robustLevel*100)}`, "Difference"]
+                  ).map((h,i) => <th key={i} style={{ color: i===1?planColor:i===2?robustColor:"#444" }}>{h}</th>)}
+                </tr></thead>
+                <tbody>
+                  {[
+                    {
+                      label: lang==="pl" ? "Koniec dnia" : "End of day",
+                      base: minToTime(baseSum.lastEnd),
+                      robust: minToTime(robustSum.lastEnd),
+                      diff: (() => { const d = robustSum.lastEnd - baseSum.lastEnd; return d === 0 ? "—" : `${d>0?"+":""}${d}'`; })(),
+                      diffColor: robustSum.lastEnd < baseSum.lastEnd ? "#6bcb77" : robustSum.lastEnd > baseSum.lastEnd ? "#ff6b6b" : "#888",
+                    },
+                    {
+                      label: lang==="pl" ? "Suma opóźnień" : "Total delay",
+                      base: `${baseSum.sumDel>0?"+":""}${baseSum.sumDel}'`,
+                      robust: `${robustSum.sumDel>0?"+":""}${robustSum.sumDel}'`,
+                      diff: (() => { const d = robustSum.sumDel - baseSum.sumDel; return d===0?"—":`${d>0?"+":""}${d}'`; })(),
+                      diffColor: robustSum.sumDel < baseSum.sumDel ? "#6bcb77" : robustSum.sumDel > baseSum.sumDel ? "#ff6b6b" : "#888",
+                    },
+                    {
+                      label: "Carry-over",
+                      base: `${baseSum.carryOver}`,
+                      robust: `${robustSum.carryOver}`,
+                      diff: (() => { const d = robustSum.carryOver - baseSum.carryOver; return d===0?"—":`${d>0?"+":""}${d}`; })(),
+                      diffColor: robustSum.carryOver < baseSum.carryOver ? "#6bcb77" : robustSum.carryOver > baseSum.carryOver ? "#ff6b6b" : "#888",
+                    },
+                    {
+                      label: lang==="pl" ? "Efektywność sali" : "Room efficiency",
+                      base: `${baseSum.eff}%`,
+                      robust: `${robustSum.eff}%`,
+                      diff: (() => { const d = parseFloat(robustSum.eff) - parseFloat(baseSum.eff); return isNaN(d)||d===0?"—":`${d>0?"+":""}${d.toFixed(1)}%`; })(),
+                      diffColor: parseFloat(robustSum.eff) > parseFloat(baseSum.eff) ? "#6bcb77" : "#ff6b6b",
+                    },
+                  ].map(row => (
+                    <tr key={row.label}>
+                      <td style={{ color:"#666", fontSize:11 }}>{row.label}</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:planColor, fontWeight:600 }}>{row.base}</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:robustColor, fontWeight:600 }}>{row.robust}</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:row.diffColor, fontWeight:700 }}>{row.diff}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* detail tables side by side */}
             {(() => {
-              // collect planIds that appeared as carry-over in any day
-              const carryOverIds = new Set(
-                days.flatMap(d => d.rows.filter(r => r.isCarryOver).map(r => r.planId))
-              );
+              const detailTable = (d, color, label) => {
+                const allRows = d.flatMap(x => x.rows);
+                const carryOverIds = new Set(allRows.filter(r => r.isCarryOver).map(r => r.planId));
+                return (
+                  <div className="card" style={{ borderTop:`2px solid ${color}` }}>
+                    <div style={{ fontSize:10, letterSpacing:"0.1em", color, textTransform:"uppercase",
+                      marginBottom:10, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                      {label}
+                    </div>
+                    <div style={{ overflowX:"auto" }}>
+                      <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                        <thead><tr>
+                          {["Op","#","Chir","Procedura","Plan","Rzecz.","Δ","Start plan","Koniec plan","Start real","Koniec real","CO"].map(h =>
+                            <th key={h}>{h}</th>
+                          )}
+                        </tr></thead>
+                        <tbody>
+                          {allRows.map((r, i) => {
+                            const co = carryOverIds.has(r.planId);
+                            return (
+                              <tr key={i} style={{ background: r.isCarryOver ? "#ff224410" : "transparent" }}>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: co?"#ff2244":"#aaa",
+                                  fontWeight: co?700:400 }}>D{r.dayIdx+1}-{r.id}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: co?"#ff2244":"#555",
+                                  fontWeight: co?700:400 }}>#{r.planId??'—'}</td>
+                                <td><span style={{ color: r.isCarryOver?"#ff2244":SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
+                                <td style={{ color:"#666" }}>{r.isSor ? "🚨 SOR" : r.proc}{r.isCarryOver?" ↩":""}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color }}>{r.planned}'</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.actual}'</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
+                                  color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>
+                                  {r.delay>0?"+":""}{r.delay}'
+                                </td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:`${color}99` }}>{minToTime(r.startPlan)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:`${color}99` }}>{minToTime(r.endPlan)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#666" }}>{minToTime(r.startReal)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                                  color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, textAlign:"center" }}>
+                                  {r.isCarryOver
+                                    ? <span style={{ color:"#ff2244", fontWeight:700 }}>↩D{r.dayIdx}</span>
+                                    : co
+                                    ? <span style={{ color:"#ff9f43" }}>→D{r.dayIdx+2}</span>
+                                    : <span style={{ color:"#333" }}>—</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              };
               return (
-                <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                  <thead><tr>{t.gantt.tableHeaders.map(h=><th key={h}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {days.flatMap(d => d.rows).map((r, i) => {
-                      const wasCarriedOver = carryOverIds.has(r.planId);
-                      return (
-                        <tr key={i} style={{ background: r.isCarryOver ? "#ff224410" : "transparent" }}>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                            color: wasCarriedOver ? "#ff2244" : "#aaa", fontWeight: wasCarriedOver ? 700 : 400 }}>
-                            D{r.dayIdx+1}-{r.id}
-                          </td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                            color: wasCarriedOver ? "#ff2244" : "#555", fontWeight: wasCarriedOver ? 700 : 400, fontSize:11 }}>
-                            #{r.planId ?? "—"}
-                          </td>
-                          <td><span style={{ color: r.isCarryOver?"#ff2244":SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
-                          <td style={{ color:"#666", fontSize:11 }}>{r.proc}{r.isCarryOver?" ↩":""}</td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace", color:MODE_CONFIG[planMode].color, fontWeight:600 }}>{r.planned}'</td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.startPlan)}</td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:MODE_CONFIG[planMode].color, opacity:0.7 }}>{minToTime(r.endPlan)}</td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.actual}'</td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
-                            color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>{r.delay>0?"+":""}{r.delay}'</td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#666" }}>{minToTime(r.startReal)}</td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11,
-                            color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
-                          <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, textAlign:"center" }}>
-                            {r.isCarryOver
-                              ? <span style={{ color:"#ff2244", fontWeight:700 }}>↩ D{r.dayIdx}</span>
-                              : wasCarriedOver
-                              ? <span style={{ color:"#ff9f43", fontSize:10 }}>→ D{r.dayIdx+2}</span>
-                              : <span style={{ color:"#333" }}>—</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  {detailTable(days, planColor, `${MODE_CONFIG[planMode].label} — ${lang==="pl"?"szczegóły":"details"}`)}
+                  {detailTable(daysRobust, robustColor, `Robust P${Math.round(robustLevel*100)} — ${lang==="pl"?"szczegóły":"details"}`)}
+                </div>
               );
             })()}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── MONTE CARLO tab ── */}
       {activeTab === "monte" && (
@@ -1521,7 +1881,7 @@ export default function ORSimV5() {
 
           {mcResults && !mcRunning && (() => {
             const modeKeys = Object.keys(mcResults);
-            const COLORS = { mean:"#ff6b6b", p50:"#e07b39", p80:"#6bcb77", custom:"#a78bfa" };
+            const COLORS = { mean:"#ff6b6b", p50:"#e07b39", p80:"#6bcb77", custom:"#a78bfa", robust:"#00d4ff" };
 
             // build histogram data — bucket end times into 15-min bins
             const bins = {};
