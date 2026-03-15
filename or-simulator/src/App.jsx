@@ -1080,7 +1080,7 @@ export default function ORSimV5() {
 
   const [mcIterations, setMcIterations] = useLocalStorage("or_mcIter", 500);
   const [revenuePerMin, setRevenuePerMin] = useLocalStorage("or_revenue", 160);
-  const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 10);
+  const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 1100/60);
   const [robustLevel, setRobustLevel] = useLocalStorage("or_robustLevel", 2.0);
 
   const t = T[lang];
@@ -1129,9 +1129,10 @@ export default function ORSimV5() {
       for (const mode of modes) {
         const endTimes = [], delays = [], overtimeDays = [], carryDays = [];
         const overtimeMins = [], carryOvers = [], efficiencies = [], utilizations = [], opsMins = [], financials = [];
+        const totalPlannedMins = [], totalActualMins = [], opsOnTime = [], opsLate = [];
         for (let i = 0; i < mcIterations; i++) {
           const sim = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
-          const allR = sim.flatMap(d => d.rows);
+          const allR = sim.flatMap(d => d.rows).filter(r => !r.isSor);
           const lastE = sim.at(-1)?.lastEnd ?? END;
           const totalD = allR.reduce((a, r) => a + Math.max(0, r.delay), 0);
           const hasOT = sim.some(d => d.lastEnd > END);
@@ -1144,7 +1145,10 @@ export default function ORSimV5() {
             ? (allR.reduce((a,r)=>a+r.actual,0) / ((END-START)*numDays)) * 100 : 0;
           const opsMin = allR.length ? Math.round(allR.reduce((a,r)=>a+r.actual,0) / numDays) : 0;
           const totalOpsMinAll = allR.reduce((a,r)=>a+r.actual,0);
+          const totalPlanned = allR.reduce((a,r)=>a+r.planned,0);
           const financial = Math.round((totalOpsMinAll * revenuePerMin - totalOTMin * overtimeCostPerMin) / numDays);
+          const nOnTime = allR.filter(r => r.delay <= 0).length;
+          const nLate   = allR.filter(r => r.delay > 0).length;
           endTimes.push(lastE);
           delays.push(totalD);
           overtimeDays.push(hasOT ? 1 : 0);
@@ -1155,6 +1159,10 @@ export default function ORSimV5() {
           utilizations.push(util);
           opsMins.push(opsMin);
           financials.push(financial);
+          totalPlannedMins.push(totalPlanned);
+          totalActualMins.push(totalOpsMinAll);
+          opsOnTime.push(nOnTime);
+          opsLate.push(nLate);
         }
         endTimes.sort((a, b) => a - b);
         delays.sort((a, b) => a - b);
@@ -1171,6 +1179,11 @@ export default function ORSimV5() {
           avgUtilization: Math.round(utilizations.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
           avgOpsMin: Math.round(opsMins.reduce((a,b)=>a+b,0) / mcIterations),
           avgFinancial: Math.round(financials.reduce((a,b)=>a+b,0) / mcIterations),
+          totalPlanned: Math.round(totalPlannedMins.reduce((a,b)=>a+b,0) / mcIterations),
+          totalActual: Math.round(totalActualMins.reduce((a,b)=>a+b,0) / mcIterations),
+          totalOpsOnTime: Math.round(opsOnTime.reduce((a,b)=>a+b,0) / mcIterations),
+          totalOpsLate: Math.round(opsLate.reduce((a,b)=>a+b,0) / mcIterations),
+          otcr: Math.round(opsOnTime.reduce((a,b)=>a+b,0) / (opsOnTime.reduce((a,b)=>a+b,0) + opsLate.reduce((a,b)=>a+b,0)) * 100),
           endTimes,
         };
       }
@@ -1266,7 +1279,7 @@ export default function ORSimV5() {
           {/* days slider */}
           <div style={{ display:"flex", alignItems:"center", gap:8, background:"#111118", border:"1px solid #1e1e2a", borderRadius:8, padding:"8px 14px" }}>
             <span style={{ fontSize:11, color:"#666", whiteSpace:"nowrap" }}>{t.daysLabel}:</span>
-            <input type="range" min={1} max={5} step={1} value={numDays}
+            <input type="range" min={1} max={30} step={1} value={numDays}
               onChange={e => setNumDays(parseInt(e.target.value))}
               style={{ width:80, accentColor:"#e07b39", cursor:"pointer" }} />
             <span style={{ fontSize:14, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace", minWidth:16 }}>{numDays}</span>
@@ -1918,7 +1931,7 @@ export default function ORSimV5() {
                 <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>
                   {lang==="pl" ? "Koszt nadgodzin (zł/h):" : "Overtime cost (zł/h):"}
                 </span>
-                <input type="range" min={200} max={1200} step={50} value={overtimeCostPerMin * 60}
+                <input type="range" min={100} max={2000} step={50} value={Math.round(overtimeCostPerMin * 60)}
                   onChange={e => setOvertimeCostPerMin(parseInt(e.target.value) / 60)}
                   style={{ flex:1, accentColor:"#ff6b6b", cursor:"pointer" }} />
                 <span style={{ fontSize:13, fontWeight:700, color:"#ff6b6b",
@@ -1963,8 +1976,8 @@ export default function ORSimV5() {
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead><tr>
                       {(lang==="pl"
-                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","Min op. śr./dzień","Efektywność sali","Wykorzystanie sali","Wynik śr./dzień (zł)","Najgorszy dzień"]
-                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","Avg op. min/day","Room efficiency","Room utilization","Avg result/day (zł)","Worst day"]
+                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","OTCR% (trafność planu)","Plan (min łącznie)","Realizacja (min łącznie)","Efektywność sali","Wykorzystanie sali","Wynik śr./dzień (zł)","Najgorszy dzień"]
+                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","OTCR% (schedule adherence)","Planned (min total)","Actual (min total)","Room efficiency","Room utilization","Avg result/day (zł)","Worst day"]
                       ).map(h=><th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
@@ -1987,8 +2000,17 @@ export default function ORSimV5() {
                               color: r.avgCarryOver>1?"#ff2244":r.avgCarryOver>0?"#ff9f43":"#6bcb77" }}>
                               {r.avgCarryOver.toFixed(1)}
                             </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#4a9eff", fontWeight:600 }}>
-                              {r.avgOpsMin}'
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
+                              color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b",
+                              fontSize:13 }}>
+                              {r.otcr}%
+                            </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>
+                              {r.totalPlanned}'
+                            </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: r.totalActual >= r.totalPlanned ? "#6bcb77" : "#ff9f43" }}>
+                              {r.totalActual}'
                             </td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace",
                               color: r.avgEfficiency>=85?"#6bcb77":r.avgEfficiency>=70?"#e0c039":"#ff6b6b" }}>
@@ -2121,11 +2143,10 @@ export default function ORSimV5() {
                             </div>
                           </div>
                           <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
-                            <div style={{ fontSize:16, fontWeight:600, color:"#ff6b6b",
-                              fontFamily:"'JetBrains Mono',monospace" }}>{minToTime(r.worstEnd)}</div>
-                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
-                              {lang==="pl" ? "najgorszy dzień" : "worst day"}
-                            </div>
+                            <div style={{ fontSize:16, fontWeight:700,
+                              color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b",
+                              fontFamily:"'JetBrains Mono',monospace" }}>{r.otcr}%</div>
+                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>OTCR</div>
                           </div>
                           <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px",
                             gridColumn:"1/-1" }}>
