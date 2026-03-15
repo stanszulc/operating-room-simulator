@@ -1238,7 +1238,7 @@ export default function ORSimV5() {
   const [mcResults, setMcResults] = useState(null);
   const [mcRunning, setMcRunning] = useState(false);
 
-  const runMonteCarlo = useCallback(() => {
+  const runMonteCarlo = useCallback((iterOverride) => {
     const validPlan = slots.filter(s => s.proc !== null);
     if (validPlan.length === 0) return;
     setMcRunning(true);
@@ -1252,13 +1252,14 @@ export default function ORSimV5() {
         ? slotsRobust.filter(s => s.proc !== null)
         : validPlan;
 
+      const nIter = Math.max(1, iterOverride ?? mcIterations);
       const results = {};
       for (const mode of modes) {
         const planForMode = mode === "robust" ? robustPlanForMC : validPlan;
         const endTimes = [], delays = [], overtimeDays = [], carryDays = [];
         const overtimeMins = [], carryOvers = [], efficiencies = [], utilizations = [], opsMins = [], financials = [];
         const totalPlannedMins = [], totalActualMins = [], opsOnTime = [], opsLate = [], daysToFinish = [];
-        for (let i = 0; i < mcIterations; i++) {
+        for (let i = 0; i < nIter; i++) {
           const sim = simulateMultiDay(planForMode, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
           const allR = sim.flatMap(d => d.rows).filter(r => !r.isSor);
           const lastE = sim.at(-1)?.lastEnd ?? END;
@@ -1299,26 +1300,26 @@ export default function ORSimV5() {
         endTimes.sort((a, b) => a - b);
         delays.sort((a, b) => a - b);
         results[mode] = {
-          overtimeRate: Math.round(overtimeDays.reduce((a,b)=>a+b,0) / mcIterations * 100),
-          carryOverRate: Math.round(carryDays.reduce((a,b)=>a+b,0) / mcIterations * 100),
-          avgDelay: Math.round(delays.reduce((a,b)=>a+b,0) / mcIterations),
-          p80Delay: delays[Math.floor(mcIterations * 0.8)],
-          avgEnd: Math.round(endTimes.reduce((a,b)=>a+b,0) / mcIterations),
-          avgOvertimeMin: Math.round(overtimeMins.reduce((a,b)=>a+b,0) / mcIterations / numDays),
-          avgCarryOver: numDays > 1 ? Math.round(carryOvers.reduce((a,b)=>a+b,0) / mcIterations / (numDays-1) * 10) / 10 : 0,
-          worstEnd: Math.max(...endTimes),
-          avgEfficiency: Math.round(efficiencies.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
-          avgUtilization: Math.round(utilizations.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
-          avgOpsMin: Math.round(opsMins.reduce((a,b)=>a+b,0) / mcIterations),
-          avgFinancial: Math.round(financials.reduce((a,b)=>a+b,0) / mcIterations),
-          totalPlanned: Math.round(totalPlannedMins.reduce((a,b)=>a+b,0) / mcIterations),
-          totalActual: Math.round(totalActualMins.reduce((a,b)=>a+b,0) / mcIterations),
-          totalOpsOnTime: Math.round(opsOnTime.reduce((a,b)=>a+b,0) / mcIterations),
-          totalOpsLate: Math.round(opsLate.reduce((a,b)=>a+b,0) / mcIterations),
-          otcr: Math.round(opsOnTime.reduce((a,b)=>a+b,0) / (opsOnTime.reduce((a,b)=>a+b,0) + opsLate.reduce((a,b)=>a+b,0)) * 100),
-          avgDaysToFinish: Math.round(daysToFinish.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
-          minDaysToFinish: Math.min(...daysToFinish),
-          maxDaysToFinish: Math.max(...daysToFinish),
+          overtimeRate: Math.round(overtimeDays.reduce((a,b)=>a+b,0) / nIter * 100),
+          carryOverRate: Math.round(carryDays.reduce((a,b)=>a+b,0) / nIter * 100),
+          avgDelay: Math.round(delays.reduce((a,b)=>a+b,0) / nIter),
+          p80Delay: delays[Math.floor(nIter * 0.8)],
+          avgEnd: Math.round(endTimes.reduce((a,b)=>a+b,0) / nIter),
+          avgOvertimeMin: Math.round(overtimeMins.reduce((a,b)=>a+b,0) / nIter / numDays),
+          avgCarryOver: numDays > 1 ? Math.round(carryOvers.reduce((a,b)=>a+b,0) / nIter / (numDays-1) * 10) / 10 : 0,
+          worstEnd: endTimes.length ? Math.max(...endTimes) : END,
+          avgEfficiency: Math.round(efficiencies.reduce((a,b)=>a+b,0) / nIter * 10) / 10,
+          avgUtilization: Math.round(utilizations.reduce((a,b)=>a+b,0) / nIter * 10) / 10,
+          avgOpsMin: Math.round(opsMins.reduce((a,b)=>a+b,0) / nIter),
+          avgFinancial: Math.round(financials.reduce((a,b)=>a+b,0) / nIter),
+          totalPlanned: Math.round(totalPlannedMins.reduce((a,b)=>a+b,0) / nIter),
+          totalActual: Math.round(totalActualMins.reduce((a,b)=>a+b,0) / nIter),
+          totalOpsOnTime: Math.round(opsOnTime.reduce((a,b)=>a+b,0) / nIter),
+          totalOpsLate: Math.round(opsLate.reduce((a,b)=>a+b,0) / nIter),
+          otcr: (() => { const tot = opsOnTime.reduce((a,b)=>a+b,0) + opsLate.reduce((a,b)=>a+b,0); return tot > 0 ? Math.round(opsOnTime.reduce((a,b)=>a+b,0) / tot * 100) : 0; })(),
+          avgDaysToFinish: Math.round(daysToFinish.reduce((a,b)=>a+b,0) / nIter * 10) / 10,
+          minDaysToFinish: daysToFinish.length ? Math.min(...daysToFinish) : 0,
+          maxDaysToFinish: daysToFinish.length ? Math.max(...daysToFinish) : 0,
           endTimes,
         };
       }
@@ -2166,11 +2167,10 @@ export default function ORSimV5() {
                 </div>
               );
             })()}
-          </div>
-        );
-      })()}
+
+            {/* free slot analysis */}
             {(() => {
-              const MIN_SLOT = 55; // min free time to count as usable slot
+              const MIN_SLOT = 55;
               const HARD_END = END + overtimeLimit;
 
               const freeSlotTable = (d, color, label) => {
@@ -2190,12 +2190,8 @@ export default function ORSimV5() {
                         {label} — {lang==="pl" ? "wolne sloty" : "free slots"}
                       </div>
                       <div style={{ display:"flex", gap:16, fontSize:11, fontFamily:"'JetBrains Mono',monospace" }}>
-                        <span style={{ color:"#6bcb77" }}>
-                          🟢 {greenRows.length} {lang==="pl" ? "dni" : "days"}
-                        </span>
-                        <span style={{ color:"#6bcb77", fontWeight:700 }}>
-                          {totalGreenMins}' {lang==="pl" ? "łącznie" : "total"}
-                        </span>
+                        <span style={{ color:"#6bcb77" }}>🟢 {greenRows.length} {lang==="pl" ? "dni" : "days"}</span>
+                        <span style={{ color:"#6bcb77", fontWeight:700 }}>{totalGreenMins}' {lang==="pl" ? "łącznie" : "total"}</span>
                       </div>
                     </div>
                     <div style={{ overflowX:"auto" }}>
@@ -2208,22 +2204,12 @@ export default function ORSimV5() {
                             const isGreen = r.free >= MIN_SLOT;
                             return (
                               <tr key={r.dayIdx} style={{ background: isGreen ? "#6bcb7708" : "transparent" }}>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:color, fontWeight:600 }}>
-                                  D{r.dayIdx + 1}
-                                </td>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                                  color: r.lastEnd > END ? "#ff6b6b" : "#888" }}>
-                                  {minToTime(r.lastEnd)}
-                                </td>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight: isGreen ? 700 : 400,
-                                  color: isGreen ? "#6bcb77" : "#555" }}>
-                                  {r.free}'
-                                </td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color, fontWeight:600 }}>D{r.dayIdx+1}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.lastEnd>END?"#ff6b6b":"#888" }}>{minToTime(r.lastEnd)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:isGreen?700:400, color:isGreen?"#6bcb77":"#555" }}>{r.free}'</td>
                                 <td style={{ fontSize:10 }}>
                                   {isGreen
-                                    ? <span style={{ color:"#6bcb77", fontWeight:700 }}>
-                                        🟢 {lang==="pl" ? "dodatkowa op." : "extra op. fits"}
-                                      </span>
+                                    ? <span style={{ color:"#6bcb77", fontWeight:700 }}>🟢 {lang==="pl"?"dodatkowa op.":"extra op. fits"}</span>
                                     : <span style={{ color:"#333" }}>—</span>}
                                 </td>
                               </tr>
@@ -2250,6 +2236,99 @@ export default function ORSimV5() {
       {/* ── MONTE CARLO tab ── */}
       {activeTab === "monte" && (
         <div style={{ display:"grid", gap:14 }}>
+
+          {/* ── current run summary ── */}
+          {(() => {
+            const HARD_END = END + overtimeLimit;
+            const runSummary = (d, label, color) => {
+              const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
+              const sorR = d.flatMap(x => x.rows).filter(r => r.isSor);
+              const totalOTMin = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
+              const totalCO = d.slice(0,-1).reduce((a, x) => a + x.carryOverCount, 0);
+              const eff = allR.length ? ((allR.reduce((a,r)=>a+r.actual,0)+PREP*(allR.length-1))/((END-START)*numDays)*100).toFixed(1) : "—";
+              const util = allR.length ? (allR.reduce((a,r)=>a+r.actual,0)/((END-START)*numDays)*100).toFixed(1) : "—";
+              const otcr = allR.length ? Math.round(allR.filter(r=>r.delay<=0).length/allR.length*100) : 0;
+              const totalPlanned = allR.reduce((a,r)=>a+r.planned,0);
+              const totalActual = allR.reduce((a,r)=>a+r.actual,0);
+              const financial = Math.round((totalActual*revenuePerMin - totalOTMin*overtimeCostPerMin)/numDays);
+              const lastEnd = d.at(-1)?.lastEnd ?? END;
+              const overtime = lastEnd > END;
+              const sorExecuted = sorR.length;
+              return { label, color, totalOTMin: Math.round(totalOTMin/numDays), totalCO,
+                eff, util, otcr, totalPlanned, totalActual, financial, lastEnd, overtime, sorExecuted };
+            };
+
+            const baseR = runSummary(days, MODE_CONFIG[planMode].label, MODE_CONFIG[planMode].color);
+            const robustR = runSummary(daysRobust, `Robust Γ=${robustLevel.toFixed(1)}`, "#00d4ff");
+
+            // free slot counter
+            const MIN_SLOT = 55;
+            const HARD = END + overtimeLimit;
+            const freeSlots = (d) => {
+              const slots = d.map(day => Math.max(0, HARD - (day.rows.length > 0 ? day.rows.at(-1).endReal : START)));
+              const green = slots.filter(s => s >= MIN_SLOT);
+              return { count: green.length, totalMins: green.reduce((a,b)=>a+b,0) };
+            };
+            const baseFS = freeSlots(days);
+            const robustFS = freeSlots(daysRobust);
+
+            return (
+              <div className="card" style={{ borderLeft:"3px solid #e07b39" }}>
+                <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#e07b39", textTransform:"uppercase",
+                  marginBottom:12, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                  {lang==="pl" ? `📊 Bieżący przebieg · ${numDays} dni · Run #${runs}` : `📊 Current run · ${numDays} days · Run #${runs}`}
+                </div>
+                <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                  <thead><tr>
+                    {(lang==="pl"
+                      ? ["Plan","Nadgodz. (min/dzień)","Carry-over","OTCR%","Plan (min)","Realizacja (min)","Efektywność","Wynik/dzień","SOR","Koniec dnia","Wolne sloty ≥55'"]
+                      : ["Plan","OT (min/day)","Carry-over","OTCR%","Planned (min)","Actual (min)","Efficiency","Result/day","SOR","End of day","Free slots ≥55'"]
+                    ).map(h => <th key={h}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {[baseR, robustR].map(r => (
+                      <tr key={r.label}>
+                        <td><span style={{ color:r.color, fontWeight:700 }}>{r.label}</span></td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                          color: r.totalOTMin>30?"#ff6b6b":r.totalOTMin>0?"#ff9f43":"#6bcb77" }}>
+                          {r.totalOTMin}'
+                        </td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                          color: r.totalCO>0?"#ff2244":"#6bcb77" }}>
+                          {r.totalCO}
+                        </td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
+                          color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b" }}>
+                          {r.otcr}%
+                        </td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>
+                          {r.totalPlanned}'
+                        </td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>
+                          {r.totalActual}'
+                        </td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#888" }}>
+                          {r.eff}%
+                        </td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:"#6bcb77" }}>
+                          {r.financial.toLocaleString()} zł
+                        </td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                          color: r.sorExecuted>0?"#ff2244":"#444" }}>
+                          {r.sorExecuted}
+                        </td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                          color: r.overtime?"#ff6b6b":"#6bcb77" }}>
+                          {minToTime(r.lastEnd)}{r.overtime?" ⚠":" ✓"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
           {/* controls */}
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
@@ -2272,6 +2351,13 @@ export default function ORSimV5() {
                 fontFamily:"'Syne',sans-serif",
               }}>
                 {mcRunning ? t.monte.running : t.monte.runBtn}
+              </button>
+              <button onClick={() => runMonteCarlo(1)} disabled={mcRunning} style={{
+                padding:"10px 16px", background:"#1a1a24", border:"1px solid #a78bfa44",
+                color:"#a78bfa", borderRadius:8, fontSize:12, fontWeight:600,
+                cursor: mcRunning ? "not-allowed" : "pointer", fontFamily:"'Syne',sans-serif",
+              }}>
+                🔍 1×
               </button>
               <span style={{ fontSize:10, color:"#333", fontFamily:"'JetBrains Mono',monospace" }}>
                 {t.monte.hint}
@@ -2309,6 +2395,71 @@ export default function ORSimV5() {
               ⏳ {lang==="pl" ? `Liczę ${mcIterations} iteracji × 4 strategie...` : `Computing ${mcIterations} iterations × 4 strategies...`}
             </div>
           )}
+
+          {/* current run summary from Gantt data */}
+          {(() => {
+            const MIN_SLOT = 55;
+            const HARD_END = END + overtimeLimit;
+            const calcSlots = (d) => {
+              const slots = d.map(day => ({
+                free: Math.max(0, HARD_END - (day.rows.length > 0 ? day.rows.at(-1).endReal : START))
+              }));
+              const green = slots.filter(s => s.free >= MIN_SLOT);
+              return { count: green.length, total: green.reduce((a,s)=>a+s.free,0) };
+            };
+            const baseSlots = calcSlots(days);
+            const robustSlots = calcSlots(daysRobust);
+            const planColor = MODE_CONFIG[planMode].color;
+            const robustColor = "#00d4ff";
+
+            return (
+              <div className="card" style={{ borderLeft:"3px solid #e07b39" }}>
+                <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+                  marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                  {lang==="pl" ? "Bieżący przebieg (dane z Ganttu)" : "Current run (Gantt data)"}
+                  <span style={{ color:"#555", marginLeft:8 }}>
+                    — {lang==="pl" ? "kliknij ▶ Uruchom aby odświeżyć" : "click ▶ Run to refresh"}
+                  </span>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  {[
+                    { label: MODE_CONFIG[planMode].label, color: planColor, s: baseSlots },
+                    { label: `Robust Γ=${robustLevel.toFixed(1)}`, color: robustColor, s: robustSlots },
+                  ].map(({ label, color, s }) => (
+                    <div key={label} style={{ background:"#0d0d14", borderRadius:8, padding:"12px 16px",
+                      border:`1px solid ${color}33` }}>
+                      <div style={{ fontSize:12, fontWeight:700, color, marginBottom:10 }}>{label}</div>
+                      <div style={{ display:"flex", gap:16 }}>
+                        <div>
+                          <div style={{ fontSize:22, fontWeight:700, color:"#6bcb77",
+                            fontFamily:"'JetBrains Mono',monospace" }}>{s.count}</div>
+                          <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                            🟢 {lang==="pl" ? "dni z wolnym slotem" : "days with free slot"}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:22, fontWeight:700, color:"#6bcb77",
+                            fontFamily:"'JetBrains Mono',monospace" }}>{s.total}'</div>
+                          <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                            {lang==="pl" ? "łącznie wolnych minut" : "total free minutes"}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:22, fontWeight:700, color:"#4a9eff",
+                            fontFamily:"'JetBrains Mono',monospace" }}>
+                            {Math.round(s.total / 60 * revenuePerMin * 60).toLocaleString()} zł
+                          </div>
+                          <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
+                            {lang==="pl" ? "potencjał przychodowy" : "revenue potential"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {mcResults && !mcRunning && (() => {
             const modeKeys = Object.keys(mcResults);
@@ -2464,7 +2615,7 @@ export default function ORSimV5() {
                     });
                     const modeHistData = Object.values(modeBins).filter(b => b.count > 0);
                     const onTime = r.endTimes.filter(e => e <= END).length;
-                    const pctOnTime = Math.round(onTime / mcIterations * 100);
+                    const pctOnTime = Math.round(onTime / r.endTimes.length * 100);
 
                     return (
                       <div key={mode} className="card" style={{ borderTop:`2px solid ${color}` }}>
