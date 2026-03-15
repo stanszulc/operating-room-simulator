@@ -396,7 +396,72 @@ function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
 
-// ── Disruption helpers ────────────────────────────────────────────────────
+// ── Robust Plan Optimizer ─────────────────────────────────────────────────
+// Sorts operations by coefficient of variation (σ/μ) — predictable first.
+// Then greedily tries to add one extra operation from the pool if budget allows.
+// Returns { slots: optimizedSlots, added: bool, addedOp: op|null }
+function optimizePlan(slots, procParams, matrix, gamma, overtimeLimit) {
+  const validSlots = slots.filter(s => s.proc !== null);
+  if (validSlots.length === 0) return { slots, added: false, addedOp: null };
+
+  const HARD_END = END + overtimeLimit;
+  const available = HARD_END - START - PREP * (validSlots.length - 1);
+
+  // Score each slot: lower = more predictable = goes first
+  const scored = validSlots.map(s => {
+    const { mu, sigma } = procParams[s.proc] ?? { mu: 4.06, sigma: 0.28 };
+    const cv = sigma / mu; // coefficient of variation
+    const p50 = Math.round(lognormP50(mu, sigma));
+    const p80 = Math.round(lognormP80(mu, sigma));
+    const deviation = p80 - p50;
+    return { ...s, cv, p50, deviation };
+  });
+
+  // Sort: most predictable (low cv) first
+  const sorted = [...scored].sort((a, b) => a.cv - b.cv);
+
+  // Check if we can add one more operation — pick shortest predictable from PROCS
+  const maxDev = Math.max(...scored.map(o => o.deviation), 1);
+  const totalBudget = gamma * maxDev;
+  const currentSum = sorted.reduce((a, s) => a + s.p50, 0);
+  const currentBudget = sorted.reduce((a, s) => a + s.deviation, 0) / scored.length * gamma;
+
+  // Find best extra op that fits within remaining budget
+  let addedOp = null;
+  const remaining = available - currentSum - totalBudget;
+
+  if (remaining > 0) {
+    // Try each procedure with each surgeon, pick one that fits
+    const candidates = PROCS.flatMap(proc =>
+      ["A","B","C"].map(chir => {
+        const { mu, sigma } = procParams[proc] ?? { mu: 4.06, sigma: 0.28 };
+        const p50 = Math.round(lognormP50(mu, sigma));
+        const p80 = Math.round(lognormP80(mu, sigma));
+        const dev = p80 - p50;
+        return { proc, chir, p50, dev };
+      })
+    ).filter(c => c.p50 + c.dev <= remaining)
+     .sort((a, b) => a.p50 - b.p50); // shortest first
+
+    if (candidates.length > 0) {
+      addedOp = { proc: candidates[0].proc, chir: candidates[0].chir };
+    }
+  }
+
+  const optimizedSlots = sorted.map(({ cv, p50, deviation, ...s }) => s);
+  if (addedOp) optimizedSlots.push(addedOp);
+
+  // Pad to original length if needed
+  while (optimizedSlots.length < slots.length) {
+    optimizedSlots.push({ proc: null, chir: "A" });
+  }
+
+  return {
+    slots: optimizedSlots,
+    added: !!addedOp,
+    addedOp,
+  };
+}
 function samplePoisson(lambda) {
   // Knuth algorithm
   const L = Math.exp(-lambda);
@@ -545,7 +610,7 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
 
 // ── Dual simulation — same actuals, two plans ─────────────────────────────
 // Returns { base: days[], robust: days[] } using same random draws
-function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions = {}) {
+function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions = {}, robustPlanOverride = null) {
   const { enableDelay=false, delayOnTime=0.7, delayMean=20,
           enableSor=false, sorLambda=1, sorDuration=60, sorPriority="end" } = disruptions;
   const HARD_END = END + overtimeLimit;
@@ -574,14 +639,15 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
   });
 
   // Run one plan variant using pre-drawn actuals
-  const runPlan = (planModeFn) => {
+  const runPlan = (planModeFn, planArg) => {
+    const usePlan = planArg ?? plan;
     let carryQueue = [];
     let globalPlanId = 0;
     const days = [];
 
     for (let d = 0; d < numDays; d++) {
       const { startDelay, sorCases, actuals } = draws[d];
-      const freshOps = plan.map((op, i) => ({ ...op, planId: ++globalPlanId, isCarryOver: false, _actualIdx: i }));
+      const freshOps = usePlan.map((op, i) => ({ ...op, planId: ++globalPlanId, isCarryOver: false, _actualIdx: i }));
       const todayPlan = [
         ...carryQueue.map(op => ({ ...op, isCarryOver: true })),
         ...freshOps,
@@ -675,15 +741,16 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
 
   const baseFn = (proc, surg) => getGlobalPlanned(procParams, proc, planMode, customOffsets);
 
-  // Build robust plan once using Gamma (robustLevel is now Gamma)
-  const robustPlanMap = buildRobustPlan(plan, matrix, procParams, robustLevel);
+  // Build robust plan — use override plan if provided (optimized), otherwise same as base plan
+  const planForRobust = robustPlanOverride ?? plan;
+  const robustPlanMap = buildRobustPlan(planForRobust, matrix, procParams, robustLevel);
   const robustFn = (proc, surg) => getPlanned(matrix, proc, surg, "robust", {
     ...customOffsets, _robustPlan: robustPlanMap
   });
 
   return {
-    base:   runPlan(baseFn),
-    robust: runPlan(robustFn),
+    base:   runPlan(baseFn, plan),
+    robust: runPlan(robustFn, planForRobust),
   };
 }
 
@@ -855,7 +922,7 @@ function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planCol
   );
 }
 
-function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, matrix, procParams, planMode, customOffsets, planColor, numDays, robustLevel }) {
+function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, matrix, procParams, planMode, customOffsets, planColor, numDays, robustLevel, slotsRobust }) {
   const [dragProc, setDragProc] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [dragSlotIdx, setDragSlotIdx] = useState(null);
@@ -960,7 +1027,7 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, mat
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:4 }}>
         <MiniGantt slots={slots} matrix={matrix} procParams={procParams} planMode={planMode}
           customOffsets={customOffsets} planColor={planColor} numDays={numDays} />
-        <MiniGantt slots={slots} matrix={matrix} procParams={procParams} planMode="robust"
+        <MiniGantt slots={slotsRobust ?? slots} matrix={matrix} procParams={procParams} planMode="robust"
           customOffsets={{ ...customOffsets, _level: robustLevel }} planColor="#00d4ff" numDays={numDays} />
       </div>
     </div>
@@ -1064,6 +1131,7 @@ export default function ORSimV5() {
   const [overtimeLimit, setOvertimeLimit] = useLocalStorage("or_overtime", 240);
   const [opsCount, setOpsCount]         = useLocalStorage("or_opsCount", 6);
   const [slots, setSlots]               = useLocalStorage("or_slots", buildRandomPlan(6));
+  const [slotsRobust, setSlotsRobust]   = useState(null); // null = same as slots (not yet optimized)
 
   // disruption state
   const [enableDelay, setEnableDelay]   = useLocalStorage("or_enableDelay", false);
@@ -1102,14 +1170,16 @@ export default function ORSimV5() {
     const validPlan = slots.filter(s => s.proc !== null);
     if (validPlan.length === 0) return;
     setRuns(r => r + 1);
-    setDualDays(simulateDual(validPlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions));
+    const robustPlan = slotsRobust ? slotsRobust.filter(s => s.proc !== null) : null;
+    setDualDays(simulateDual(validPlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustPlan));
     setActiveTab("gantt");
-  }, [slots, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority]);
+  }, [slots, slotsRobust, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority]);
 
   const handleModeChange = (mode) => {
     setPlanMode(mode);
     const validPlan = slots.filter(s => s.proc !== null);
-    setDualDays(simulateDual(validPlan, procParams, matrix, mode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions));
+    const robustPlan = slotsRobust ? slotsRobust.filter(s => s.proc !== null) : null;
+    setDualDays(simulateDual(validPlan, procParams, matrix, mode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustPlan));
   };
 
   const [mcResults, setMcResults] = useState(null);
@@ -1192,7 +1262,25 @@ export default function ORSimV5() {
     }, 50);
   }, [slots, procParams, matrix, customOffsets, numDays, overtimeLimit, disruptions, mcIterations]);
 
-  const handleRandomize = () => setSlots(buildRandomPlan(opsCount));
+  const handleRandomize = () => {
+    setSlots(buildRandomPlan(opsCount));
+    setSlotsRobust(null);
+    setLastOptimizeResult(null);
+  };
+
+  const [lastOptimizeResult, setLastOptimizeResult] = useState(null);
+
+  const handleOptimize = useCallback(() => {
+    const result = optimizePlan(slots, procParams, matrix, robustLevel, overtimeLimit);
+    setSlotsRobust(result.slots);
+    setLastOptimizeResult(result);
+    // re-run simulation: base uses original slots, robust uses optimized slots
+    const basePlan = slots.filter(s => s.proc !== null);
+    const robustPlan = result.slots.filter(s => s.proc !== null);
+    if (basePlan.length > 0) {
+      setDualDays(simulateDual(basePlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustPlan));
+    }
+  }, [slots, procParams, matrix, robustLevel, overtimeLimit, planMode, customOffsets, numDays, disruptions]);
 
   const setParam = (proc, key, val) =>
     setProcParams(prev => ({ ...prev, [proc]: { ...prev[proc], [key]: val } }));
@@ -1355,12 +1443,36 @@ export default function ORSimV5() {
         <div className="card">
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace" }}>{t.schedule.title}</div>
-            <button onClick={handleRandomize} style={{ background:"#1a1a28", border:"1px solid #252530", color:"#aaa", borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>{t.schedule.randomize}</button>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={handleRandomize} style={{ background:"#1a1a28", border:"1px solid #252530", color:"#aaa", borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>{t.schedule.randomize}</button>
+              <button onClick={handleOptimize} style={{ background:"#00d4ff18", border:"1px solid #00d4ff44", color:"#00d4ff", borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
+                🔧 {lang==="pl" ? "Optymalizuj" : "Optimize"}
+              </button>
+            </div>
           </div>
+          {lastOptimizeResult && (
+            <div style={{ marginBottom:12, padding:"8px 14px", borderRadius:6,
+              background: lastOptimizeResult.added ? "#00d4ff12" : "#6bcb7712",
+              border:`1px solid ${lastOptimizeResult.added ? "#00d4ff44" : "#6bcb7744"}`,
+              fontSize:11, fontFamily:"'JetBrains Mono',monospace" }}>
+              {lastOptimizeResult.added
+                ? <span style={{ color:"#00d4ff" }}>
+                    🔧 {lang==="pl"
+                      ? `Plan Robust zoptymalizowany · dodano: ${lastOptimizeResult.addedOp.proc} (Chir. ${lastOptimizeResult.addedOp.chir}) · Plan bazowy niezmieniony`
+                      : `Robust plan optimized · added: ${lastOptimizeResult.addedOp.proc} (Surg. ${lastOptimizeResult.addedOp.chir}) · Base plan unchanged`}
+                  </span>
+                : <span style={{ color:"#6bcb77" }}>
+                    🔧 {lang==="pl"
+                      ? "Plan Robust zoptymalizowany (kolejność wg zmienności) · Plan bazowy niezmieniony"
+                      : "Robust plan optimized (ordered by variability) · Base plan unchanged"}
+                  </span>
+              }
+            </div>
+          )}
           <ScheduleBuilder slots={slots} setSlots={setSlots} opsCount={opsCount} setOpsCount={setOpsCount}
             onRun={runSim} t={t.schedule} matrix={matrix} procParams={procParams} planMode={planMode}
             customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color} numDays={numDays}
-            robustLevel={robustLevel} />
+            robustLevel={robustLevel} slotsRobust={slotsRobust} />
 
           {/* disruption toggles */}
           <div style={{ marginTop:16, borderTop:"1px solid #1e1e2a", paddingTop:16 }}>
