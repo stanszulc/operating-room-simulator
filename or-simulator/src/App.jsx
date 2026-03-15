@@ -2244,7 +2244,6 @@ export default function ORSimV5() {
               );
             })()}
           </div>
-        </div>
         );
       })()}
 
