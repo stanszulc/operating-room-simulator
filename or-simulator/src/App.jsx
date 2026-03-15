@@ -396,93 +396,29 @@ function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
 
-// ── Robust Plan Optimizer — Rolling Horizon ───────────────────────────────
-// Each day: sort ops by CV (predictable first).
-// If time left after all ops → pull shortest op from next N days.
-// That op disappears from its original day (which may then have a free slot too).
-// Never creates fictional ops. planningWindow = max days ahead to borrow from.
+// ── Robust Plan Optimizer — Stable v1 ────────────────────────────────────
+// Sorts operations by CV (predictable first) within each day.
+// No cross-day borrowing — simulation uses same plan each day.
 function optimizePlan(slots, procParams, matrix, gamma, overtimeLimit, numDays, planningWindow) {
   const validSlots = slots.filter(s => s.proc !== null);
-  if (validSlots.length === 0) return { slots, dayPlans: [], totalDays: numDays, saved: 0 };
+  if (validSlots.length === 0) return { slots, dayPlans: null, totalDays: numDays, saved: 0 };
 
-  const HARD_END = END + overtimeLimit;
-
-  const scoreOp = (op) => {
-    const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+  // Score each slot by CV
+  const scored = validSlots.map(s => {
+    const { mu, sigma } = procParams[s.proc] ?? { mu: 4.06, sigma: 0.28 };
     const p50 = Math.round(lognormP50(mu, sigma));
     const p80 = Math.round(lognormP80(mu, sigma));
-    return { ...op, cv: sigma/mu, p50, deviation: Math.max(0, p80-p50) };
-  };
+    return { ...s, cv: sigma/mu, p50, deviation: Math.max(0, p80-p50) };
+  });
 
-  // Build initial schedule: each day has same ops as base plan
-  let schedule = Array.from({ length: numDays }, () =>
-    validSlots.map(s => scoreOp({ ...s }))
-  );
+  // Sort by CV — predictable first
+  const sorted = [...scored].sort((a, b) => a.cv - b.cv);
+  const newSlots = sorted.map(({ cv, p50, deviation, ...s }) => s);
 
-  // Process day by day — rolling horizon
-  for (let d = 0; d < schedule.length; d++) {
-    // Sort today's ops by CV (predictable first)
-    schedule[d].sort((a, b) => a.cv - b.cv);
+  // Pad to original length
+  while (newSlots.length < slots.length) newSlots.push({ proc: null, chir: "A" });
 
-    // Calculate time used by today's ops with Γ budget
-    const maxDev = Math.max(...schedule[d].map(o => o.deviation), 1);
-    const budget = gamma * maxDev;
-    let usedTime = 0;
-    let usedBudget = 0;
-    for (const op of schedule[d]) {
-      usedTime += (usedTime > 0 ? PREP : 0) + op.p50;
-      usedBudget += op.deviation;
-    }
-
-    // Check remaining time — can we fit an extra op?
-    let timeLeft = HARD_END - START - usedTime - Math.max(0, usedBudget - budget);
-
-    // Look ahead N days for shortest op that fits
-    let borrowed = true;
-    while (borrowed && timeLeft > PREP + 10) {
-      borrowed = false;
-      let bestOp = null, bestDay = -1, bestIdx = -1;
-
-      for (let fd = d + 1; fd <= Math.min(d + planningWindow, schedule.length - 1); fd++) {
-        for (let oi = 0; oi < schedule[fd].length; oi++) {
-          const op = schedule[fd][oi];
-          const needed = PREP + op.p50 + op.deviation;
-          if (needed <= timeLeft) {
-            if (!bestOp || op.p50 < bestOp.p50) {
-              bestOp = op; bestDay = fd; bestIdx = oi;
-            }
-          }
-        }
-      }
-
-      if (bestOp && bestDay >= 0) {
-        // Add to today, remove from future day
-        schedule[d].push(bestOp);
-        schedule[bestDay].splice(bestIdx, 1);
-        usedTime += PREP + bestOp.p50;
-        usedBudget += bestOp.deviation;
-        timeLeft = HARD_END - START - usedTime - Math.max(0, usedBudget - budget);
-        borrowed = true;
-      }
-    }
-  }
-
-  // Remove empty days at the end
-  const dayPlans = schedule
-    .map(day => day.map(({ cv, p50, deviation, ...op }) => op))
-    .filter(day => day.length > 0);
-
-  const totalDays = dayPlans.length;
-  const saved = Math.max(0, numDays - totalDays);
-
-  // slotsRobust = first day for MiniGantt
-  const firstDay = dayPlans[0] ?? validSlots;
-  const newSlots = [
-    ...firstDay,
-    ...Array(Math.max(0, slots.length - firstDay.length)).fill({ proc: null, chir: "A" })
-  ];
-
-  return { slots: newSlots, dayPlans, totalDays, saved };
+  return { slots: newSlots, dayPlans: null, totalDays: numDays, saved: 0 };
 }
 function samplePoisson(lambda) {
   // Knuth algorithm
@@ -928,13 +864,13 @@ function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planCol
   const W = 460;
   const calcDur = (s) => {
     if (planMode === "robust") {
-      const robustMap = buildRobustPlan(filledSlots, matrix, procParams, customOffsets?._level ?? robustLevel ?? 2);
+      const robustMap = buildRobustPlan(filledSlots, matrix, procParams, customOffsets?._level ?? 2);
       return robustMap[`${s.proc}__${s.chir}`] ?? 60;
     }
     return getGlobalPlanned(procParams, s.proc, planMode, customOffsets);
   };
 
-  const days = Array.from({ length: numDays }, (_, d) => {
+  const daysData = Array.from({ length: numDays }, (_, d) => {
     let t = START;
     const bars = filledSlots.map((s, i) => {
       const dur = calcDur(s);
@@ -954,9 +890,9 @@ function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planCol
         {planMode === "robust"
           ? `🛡 Robust Γ=${(customOffsets?._level ?? 2).toFixed(1)}`
           : `Plan · ${planMode.toUpperCase()}`}
-        {" · "}{numDays} {numDays === 1 ? "day" : "days"}
+        {" · "}{daysData.length} {daysData.length === 1 ? "day" : "days"}
       </div>
-      {days.map(({ d, bars, lastEnd, overtime }) => (
+      {daysData.map(({ d, bars, lastEnd, overtime }) => (
         <div key={d} style={{ marginBottom:14 }}>
           {/* day header */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
@@ -1212,7 +1148,7 @@ export default function ORSimV5() {
   const [opsCount, setOpsCount]         = useLocalStorage("or_opsCount", 6);
   const [slots, setSlots]               = useLocalStorage("or_slots", buildRandomPlan(6));
   const [slotsRobust, setSlotsRobust]   = useState(null);
-  const [optimizedDayPlans, setOptimizedDayPlans] = useState(null); // null = same as slots (not yet optimized)
+  const [optimizedDayPlans, setOptimizedDayPlans] = useState(null); // reserved for future use
 
   // disruption state
   const [enableDelay, setEnableDelay]   = useLocalStorage("or_enableDelay", false);
@@ -1308,8 +1244,7 @@ export default function ORSimV5() {
           const nLate   = allR.filter(r => r.delay > 0).length;
           // days to complete: simulate until all ops from full period are done
           const fullPeriodPlan = Array.from({ length: numDays }, () => planForMode).flat();
-          const prepack = (mode === "robust" && optimizedDayPlans) ? optimizedDayPlans : null;
-          const dtc = simulateDaysToComplete(fullPeriodPlan, procParams, matrix, mode, customOffsets, overtimeLimit, disruptions, prepack);
+          const dtc = simulateDaysToComplete(fullPeriodPlan, procParams, matrix, mode, customOffsets, overtimeLimit, disruptions, null);
           endTimes.push(lastE);
           delays.push(totalD);
           overtimeDays.push(hasOT ? 1 : 0);
@@ -1368,20 +1303,14 @@ export default function ORSimV5() {
 
   const handleOptimize = useCallback(() => {
     const result = optimizePlan(slots, procParams, matrix, robustLevel, overtimeLimit, numDays, planningWindow);
-    // First day slots for MiniGantt display
-    const firstDaySlots = (result.dayPlans[0] ?? []);
-    const paddedSlots = [...firstDaySlots];
-    while (paddedSlots.length < slots.filter(s=>s.proc).length) paddedSlots.push({ proc: null, chir: "A" });
-    setSlotsRobust(paddedSlots.length > 0 ? paddedSlots : null);
-    setOptimizedDayPlans(result.dayPlans);
-    setLastOptimizeResult({ ...result, added: result.saved > 0, totalDays: result.totalDays });
-    // re-run simulation: base uses original plan, robust uses first day of optimized
+    setSlotsRobust(result.slots);
+    setLastOptimizeResult(result);
     const basePlan = slots.filter(s => s.proc !== null);
-    const robustFirstDay = firstDaySlots.filter(s => s.proc !== null);
+    const robustPlan = result.slots.filter(s => s.proc !== null);
     if (basePlan.length > 0) {
-      setDualDays(simulateDual(basePlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustFirstDay.length > 0 ? robustFirstDay : null));
+      setDualDays(simulateDual(basePlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustPlan));
     }
-  }, [slots, procParams, matrix, robustLevel, overtimeLimit, numDays, planMode, customOffsets, disruptions]);
+  }, [slots, procParams, matrix, robustLevel, overtimeLimit, numDays, planningWindow, planMode, customOffsets, disruptions]);
 
   const setParam = (proc, key, val) =>
     setProcParams(prev => ({ ...prev, [proc]: { ...prev[proc], [key]: val } }));
@@ -1783,19 +1712,28 @@ export default function ORSimV5() {
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.planning.diffTitle}</div>
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead><tr>{t.planning.diffHeaders.map(h=><th key={h}>{h}</th>)}</tr></thead>
+              <thead><tr>
+                {[...t.planning.diffHeaders, `Robust Γ=${robustLevel.toFixed(1)}`].map(h=><th key={h}>{h}</th>)}
+              </tr></thead>
               <tbody>
-                {matrixRows.map((r,i) => (
-                  <tr key={i}>
-                    <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
-                    <td style={{ color:"#888", fontSize:11 }}>{r.proc}</td>
-                    <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
-                    <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
-                    <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
-                    <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43", fontWeight:600 }}>+{r.mean-r.p50}'</td>
-                    <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:MODE_CONFIG[planMode].color }}>{r.planned}'</td>
-                  </tr>
-                ))}
+                {matrixRows.map((r,i) => {
+                  const robustMap = buildRobustPlan(
+                    [{ proc: r.proc, chir: r.surg }], matrix, procParams, robustLevel
+                  );
+                  const robustVal = robustMap[`${r.proc}__${r.surg}`] ?? r.p50;
+                  return (
+                    <tr key={i}>
+                      <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
+                      <td style={{ color:"#888", fontSize:11 }}>{r.proc}</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43", fontWeight:600 }}>+{r.mean-r.p50}'</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:MODE_CONFIG[planMode].color }}>{r.planned}'</td>
+                      <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:"#00d4ff" }}>{robustVal}'</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -2109,6 +2047,72 @@ export default function ORSimV5() {
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                   {detailTable(days, planColor, `${MODE_CONFIG[planMode].label} — ${lang==="pl"?"szczegóły":"details"}`)}
                   {detailTable(daysRobust, robustColor, `Robust Γ=${robustLevel.toFixed(1)} — ${lang==="pl"?"szczegóły":"details"}`)}
+                </div>
+              );
+            })()}
+
+            {/* procedure summary table */}
+            {(() => {
+              const procSummary = (d, planSlots) => {
+                const allRows = d.flatMap(x => x.rows).filter(r => !r.isSor);
+                const planned = {};
+                const executed = {};
+                planSlots.filter(s => s.proc).forEach(s => {
+                  planned[s.proc] = (planned[s.proc] ?? 0) + numDays;
+                });
+                const executedPlanIds = new Set();
+                allRows.forEach(r => {
+                  if (r.planId && r.planId !== "SOR" && !executedPlanIds.has(r.planId)) {
+                    executedPlanIds.add(r.planId);
+                    executed[r.proc] = (executed[r.proc] ?? 0) + 1;
+                  }
+                });
+                return { planned, executed };
+              };
+              const baseS = procSummary(days, slots);
+              const robustS = procSummary(daysRobust, slots);
+              const allProcs = [...new Set([...Object.keys(baseS.planned), ...Object.keys(robustS.planned)])];
+
+              return (
+                <div className="card">
+                  <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+                    marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {lang==="pl" ? "Podsumowanie wykonania per procedura" : "Execution summary per procedure"}
+                  </div>
+                  <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                    <thead><tr>
+                      {(lang==="pl"
+                        ? ["Procedura", "Baza: zapl.", "Baza: wyk.", "Baza: niezreal.", `Robust Γ=${robustLevel.toFixed(1)}: zapl.`, "Robust: wyk.", "Robust: niezreal."]
+                        : ["Procedure", "Base: planned", "Base: executed", "Base: unrealized", `Robust Γ=${robustLevel.toFixed(1)}: planned`, "Robust: executed", "Robust: unrealized"]
+                      ).map(h => <th key={h}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {allProcs.map(proc => {
+                        const color = PROC_COLORS[proc] ?? "#888";
+                        const bPlan = baseS.planned[proc] ?? 0;
+                        const bExec = baseS.executed[proc] ?? 0;
+                        const bUnreal = Math.max(0, bPlan - bExec);
+                        const rPlan = robustS.planned[proc] ?? 0;
+                        const rExec = robustS.executed[proc] ?? 0;
+                        const rUnreal = Math.max(0, rPlan - rExec);
+                        return (
+                          <tr key={proc}>
+                            <td><span style={{ color, fontWeight:600 }}>{proc}</span></td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:planColor }}>{bPlan}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: bExec < bPlan ? "#ff9f43" : "#6bcb77", fontWeight:600 }}>{bExec}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: bUnreal > 0 ? "#ff2244" : "#444", fontWeight: bUnreal > 0 ? 700 : 400 }}>{bUnreal}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:robustColor }}>{rPlan}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: rExec < rPlan ? "#ff9f43" : "#6bcb77", fontWeight:600 }}>{rExec}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                              color: rUnreal > 0 ? "#ff2244" : "#444", fontWeight: rUnreal > 0 ? 700 : 400 }}>{rUnreal}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               );
             })()}
