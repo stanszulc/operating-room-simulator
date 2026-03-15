@@ -341,31 +341,33 @@ function getGlobalPlanned(procParams, proc, planMode, customOffsets) {
 // Allocates a total budget of Gamma × max_deviation across all operations.
 // Operations with higher σ (more variable) get proportionally more buffer.
 // Returns a map: { proc_surg_key → planned_minutes }
-function buildRobustPlan(plan, matrix, procParams, gamma) {
+function buildRobustPlan(plan, matrix, procParams, gamma, overtimeLimit = 0) {
   if (!plan || plan.length === 0) return {};
 
-  // For each op compute: p50 (base) and max_deviation = p80 - p50
   const ops = plan.map(op => {
     const cell = matrix[op.proc]?.[op.chir];
-    const { sigma } = procParams[op.proc] ?? { sigma: 0.28 };
-    const p50 = cell?.p50 ?? Math.round(lognormP50(
-      procParams[op.proc]?.mu ?? 4.06, sigma));
-    const p80 = cell?.p80 ?? Math.round(lognormP80(
-      procParams[op.proc]?.mu ?? 4.06, sigma));
-    const deviation = Math.max(0, p80 - p50); // max possible overrun
+    const { sigma, mu } = procParams[op.proc] ?? { sigma: 0.28, mu: 4.06 };
+    const p50 = cell?.p50 ?? Math.round(lognormP50(mu, sigma));
+    const p80 = cell?.p80 ?? Math.round(lognormP80(mu, sigma));
+    const deviation = Math.max(0, p80 - p50);
     return { proc: op.proc, chir: op.chir, p50, deviation, sigma };
   });
 
-  // Total budget = Gamma × max single deviation
-  const maxDev = Math.max(...ops.map(o => o.deviation), 1);
-  const totalBudget = gamma * maxDev;
+  // Available buffer = day capacity minus sum of p50 minus prep
+  const sumP50 = ops.reduce((a, o) => a + o.p50, 0);
+  const prepTotal = PREP * (ops.length - 1);
+  const availableBuffer = Math.max(0, (END - START + overtimeLimit) - sumP50 - prepTotal);
 
-  // Allocate proportionally to deviation (higher σ → more buffer)
+  // MIT Box: total budget = min(Gamma × max_deviation, available buffer)
+  const maxDev = Math.max(...ops.map(o => o.deviation), 1);
+  const totalBudget = Math.min(gamma * maxDev, availableBuffer);
+
+  // Allocate proportionally to deviation
   const totalDev = ops.reduce((a, o) => a + o.deviation, 0) || 1;
   const result = {};
   ops.forEach(op => {
     const key = `${op.proc}__${op.chir}`;
-    const share = totalDev > 0 ? op.deviation / totalDev : 0;
+    const share = op.deviation / totalDev;
     const buffer = Math.round(share * totalBudget);
     result[key] = Math.max(10, Math.round((op.p50 + buffer) / 5) * 5);
   });
@@ -609,6 +611,7 @@ function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffset
     let tReal = START + startDelay;
     let tPlan = START;
     const nextQueue = [];
+    let overflowed = false;
 
     for (const op of queue) {
       const planned = calcPlanned(op.proc, op.chir);
@@ -617,7 +620,11 @@ function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffset
       const actual = Math.max(15, Math.round(randLognorm(mu, sigma) * skill));
       const endReal = tReal + actual;
       const endPlan = tPlan + planned;
-      if (endPlan > HARD_END || endReal > HARD_END) { nextQueue.push(op); continue; }
+      if (overflowed || endPlan > HARD_END || endReal > HARD_END) {
+        overflowed = true;
+        nextQueue.push(op);
+        continue;
+      }
       tReal = endReal + PREP;
       tPlan = endPlan + PREP;
     }
@@ -658,12 +665,18 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
   const runPlan = (planModeFn, planArg) => {
     const usePlan = planArg ?? plan;
     let carryQueue = [];
+    let sorCarryQueue = []; // SOR cases that didn't fit — carry to next day as priority
     let globalPlanId = 0;
     const days = [];
 
     for (let d = 0; d < numDays; d++) {
       const { startDelay, sorCases, actuals } = draws[d];
       const freshOps = usePlan.map((op, i) => ({ ...op, planId: ++globalPlanId, isCarryOver: false, _actualIdx: i }));
+
+      // SOR carry-overs from previous day go first (preempt)
+      const todaySorCarry = [...sorCarryQueue];
+      sorCarryQueue = [];
+
       const todayPlan = [
         ...carryQueue.map(op => ({ ...op, isCarryOver: true })),
         ...freshOps,
@@ -675,7 +688,24 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
       const rows = [];
       let overflowed = false;
       let sorQueue = [...sorCases];
-      let freshIdx = 0; // index into pre-drawn actuals
+      let freshIdx = 0;
+
+      // Insert carried-over SOR cases at start of day (priority)
+      for (const sor of todaySorCarry) {
+        if (tReal + sor.duration <= HARD_END) {
+          rows.push({
+            id: rows.length+1, planId:"SOR", dayIdx:d, chir:"SOR",
+            proc:"Emergency (SOR)", isCarryOver:true, isSor:true,
+            startPlan:tReal, endPlan:tReal+sor.duration,
+            startReal:tReal, endReal:tReal+sor.duration,
+            planned:sor.duration, actual:sor.duration, delay:0,
+          });
+          tReal += sor.duration + PREP;
+          tPlan = tReal;
+        } else {
+          sorCarryQueue.push(sor); // still doesn't fit, carry again
+        }
+      }
 
       for (let i = 0; i < todayPlan.length; i++) {
         const op = todayPlan[i];
@@ -693,6 +723,8 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
               });
               tReal += sor.duration + PREP;
               tPlan = tReal;
+            } else {
+              sorCarryQueue.push(sor); // carry to next day
             }
           }
         }
@@ -741,6 +773,8 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
               planned:sor.duration, actual:sor.duration, delay:0,
             });
             tReal += sor.duration + PREP;
+          } else {
+            sorCarryQueue.push(sor); // carry to next day as priority
           }
         }
       }
@@ -748,6 +782,7 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
       days.push({
         dayIdx: d, rows,
         carryOverCount: carryQueue.length,
+        sorCarryCount: sorCarryQueue.length,
         lastEnd: rows.at(-1)?.endReal ?? START,
         startDelay, sorCount: sorCases.length,
       });
@@ -759,7 +794,7 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
 
   // Build robust plan — use override plan if provided (optimized), otherwise same as base plan
   const planForRobust = robustPlanOverride ?? plan;
-  const robustPlanMap = buildRobustPlan(planForRobust, matrix, procParams, robustLevel);
+  const robustPlanMap = buildRobustPlan(planForRobust, matrix, procParams, robustLevel, overtimeLimit);
   const robustFn = (proc, surg) => getPlanned(matrix, proc, surg, "robust", {
     ...customOffsets, _robustPlan: robustPlanMap
   });
@@ -1269,7 +1304,7 @@ export default function ORSimV5() {
           avgDelay: Math.round(delays.reduce((a,b)=>a+b,0) / mcIterations),
           p80Delay: delays[Math.floor(mcIterations * 0.8)],
           avgEnd: Math.round(endTimes.reduce((a,b)=>a+b,0) / mcIterations),
-          avgOvertimeMin: Math.round(overtimeMins.reduce((a,b)=>a+b,0) / mcIterations),
+          avgOvertimeMin: Math.round(overtimeMins.reduce((a,b)=>a+b,0) / mcIterations / numDays),
           avgCarryOver: numDays > 1 ? Math.round(carryOvers.reduce((a,b)=>a+b,0) / mcIterations / (numDays-1) * 10) / 10 : 0,
           worstEnd: Math.max(...endTimes),
           avgEfficiency: Math.round(efficiencies.reduce((a,b)=>a+b,0) / mcIterations * 10) / 10,
@@ -2054,20 +2089,24 @@ export default function ORSimV5() {
             {/* procedure summary table */}
             {(() => {
               const procSummary = (d, planSlots) => {
-                const allRows = d.flatMap(x => x.rows).filter(r => !r.isSor);
+                const allRows = d.flatMap(x => x.rows);
+                const allNonSor = allRows.filter(r => !r.isSor);
                 const planned = {};
                 const executed = {};
                 planSlots.filter(s => s.proc).forEach(s => {
                   planned[s.proc] = (planned[s.proc] ?? 0) + numDays;
                 });
                 const executedPlanIds = new Set();
-                allRows.forEach(r => {
+                allNonSor.forEach(r => {
                   if (r.planId && r.planId !== "SOR" && !executedPlanIds.has(r.planId)) {
                     executedPlanIds.add(r.planId);
                     executed[r.proc] = (executed[r.proc] ?? 0) + 1;
                   }
                 });
-                return { planned, executed };
+                // SOR counts
+                const sorExecuted = allRows.filter(r => r.isSor).length;
+                const sorCarried = d.reduce((a, x) => a + (x.sorCarryCount ?? 0), 0);
+                return { planned, executed, sorExecuted, sorCarried };
               };
               const baseS = procSummary(days, slots);
               const robustS = procSummary(daysRobust, slots);
@@ -2112,7 +2151,95 @@ export default function ORSimV5() {
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop:"2px solid #ff224444" }}>
+                        <td><span style={{ color:"#ff2244", fontWeight:700 }}>🚨 SOR</span></td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#555", fontSize:10 }}>{lang==="pl"?"nieplan.":"unplanned"}</td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff2244", fontWeight:600 }}>{baseS.sorExecuted}</td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color: baseS.sorCarried>0?"#ff9f43":"#444" }}>{baseS.sorCarried>0?`↩${baseS.sorCarried}`:"—"}</td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#555", fontSize:10 }}>{lang==="pl"?"nieplan.":"unplanned"}</td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff2244", fontWeight:600 }}>{robustS.sorExecuted}</td>
+                        <td style={{ fontFamily:"'JetBrains Mono',monospace", color: robustS.sorCarried>0?"#ff9f43":"#444" }}>{robustS.sorCarried>0?`↩${robustS.sorCarried}`:"—"}</td>
+                      </tr>
+                    </tfoot>
                   </table>
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
+            {(() => {
+              const MIN_SLOT = 55; // min free time to count as usable slot
+              const HARD_END = END + overtimeLimit;
+
+              const freeSlotTable = (d, color, label) => {
+                const rows = d.map(day => {
+                  const lastReal = day.rows.length > 0 ? day.rows.at(-1).endReal : START;
+                  const free = Math.max(0, HARD_END - lastReal);
+                  return { dayIdx: day.dayIdx, lastEnd: lastReal, free };
+                });
+                const greenRows = rows.filter(r => r.free >= MIN_SLOT);
+                const totalGreenMins = greenRows.reduce((a, r) => a + r.free, 0);
+
+                return (
+                  <div className="card" style={{ borderTop:`2px solid ${color}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:10 }}>
+                      <div style={{ fontSize:10, letterSpacing:"0.1em", color, textTransform:"uppercase",
+                        fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                        {label} — {lang==="pl" ? "wolne sloty" : "free slots"}
+                      </div>
+                      <div style={{ display:"flex", gap:16, fontSize:11, fontFamily:"'JetBrains Mono',monospace" }}>
+                        <span style={{ color:"#6bcb77" }}>
+                          🟢 {greenRows.length} {lang==="pl" ? "dni" : "days"}
+                        </span>
+                        <span style={{ color:"#6bcb77", fontWeight:700 }}>
+                          {totalGreenMins}' {lang==="pl" ? "łącznie" : "total"}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ overflowX:"auto" }}>
+                      <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                        <thead><tr>
+                          {["Dzień","Koniec dnia","Wolny czas","Status"].map(h => <th key={h}>{h}</th>)}
+                        </tr></thead>
+                        <tbody>
+                          {rows.map(r => {
+                            const isGreen = r.free >= MIN_SLOT;
+                            return (
+                              <tr key={r.dayIdx} style={{ background: isGreen ? "#6bcb7708" : "transparent" }}>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:color, fontWeight:600 }}>
+                                  D{r.dayIdx + 1}
+                                </td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace",
+                                  color: r.lastEnd > END ? "#ff6b6b" : "#888" }}>
+                                  {minToTime(r.lastEnd)}
+                                </td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight: isGreen ? 700 : 400,
+                                  color: isGreen ? "#6bcb77" : "#555" }}>
+                                  {r.free}'
+                                </td>
+                                <td style={{ fontSize:10 }}>
+                                  {isGreen
+                                    ? <span style={{ color:"#6bcb77", fontWeight:700 }}>
+                                        🟢 {lang==="pl" ? "dodatkowa op." : "extra op. fits"}
+                                      </span>
+                                    : <span style={{ color:"#333" }}>—</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  {freeSlotTable(days, planColor, MODE_CONFIG[planMode].label)}
+                  {freeSlotTable(daysRobust, robustColor, `Robust Γ=${robustLevel.toFixed(1)}`)}
                 </div>
               );
             })()}
@@ -2208,6 +2335,12 @@ export default function ORSimV5() {
                   <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
                     marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
                     {t.monte.summaryTitle} · {mcIterations} {t.monte.iterations}
+                    <span style={{ fontSize:9, color:"#555", marginLeft:8, fontFamily:"'JetBrains Mono',monospace" }}>
+                      {numDays}d · {overtimeLimit}' OT
+                      {enableSor ? ` · SOR λ=${sorLambda}` : " · SOR=0"}
+                      {enableDelay ? ` · delay P=${Math.round((1-delayOnTime)*100)}%` : " · delay=0"}
+                      {" · "}Γ={robustLevel.toFixed(1)}
+                    </span>
                   </div>
                   <table style={{ width:"100%", borderCollapse:"collapse" }}>
                     <thead><tr>
