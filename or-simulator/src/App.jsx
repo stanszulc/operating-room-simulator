@@ -3050,25 +3050,34 @@ export default function ORSimV5() {
           const otcr = allR.length ? Math.round(allR.filter(r=>r.delay<=0).length/allR.length*100) : 0;
           const lastEnd = d.at(-1)?.lastEnd ?? END;
           const totalActual = allR.reduce((a,r)=>a+r.actual,0);
-          const financial = Math.round((totalActual*revenuePerMin - totalOTMinAll*overtimeCostPerMin)/totalD);
+          const revenueTotal = Math.round(totalActual * revenuePerMin);
+          const otCostTotal = Math.round(totalOTMinAll * overtimeCostPerMin);
+          const saleSavingTotal = saved * dayOperatingCost * 1000;
+          const totalResult = revenueTotal - otCostTotal + saleSavingTotal;
+          const financial = Math.round(totalResult / totalD);
           return { otcr, carryOver, eff, util, lastEnd, overtime: lastEnd > END,
-            totalOTMin: Math.round(totalOTMinAll/totalD), financial, pctAccelerated, days: totalD };
+            totalOTMin: Math.round(totalOTMinAll/totalD), financial,
+            revenueTotal, otCostTotal, saleSavingTotal, totalResult,
+            pctAccelerated, days: totalD };
         };
 
         const kpiData = STRATS.map(s => ({ ...s, kpi: calcKPI(s.days, s.key === "rh" ? optDays : numDays) }));
 
         const kpiRows = [
           { label:lang==="pl"?"Przebiegów":"Runs",           fmt: ()=>"1" },
-          { label:lang==="pl"?"Dni planu":"Plan days",        fmt: k=>`${k.days}`,                                         better:"less" },
+          { label:lang==="pl"?"Dni planu":"Plan days",        fmt: k=>`${k.days}`,                                         better:"less",  highlight:true },
           { label:lang==="pl"?"Koniec dnia":"End of day",     fmt: k=>`${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}` },
           { label:"OTCR%",                                    fmt: k=>`${k.otcr}%`,                                        better:"more" },
           { label:"Carry-over",                               fmt: k=>`${k.carryOver}`,                                    better:"less" },
           { label:lang==="pl"?"Efektywność":"Efficiency",     fmt: k=>`${k.eff}%`,                                         better:"more" },
           { label:lang==="pl"?"Wykorzystanie":"Utilization",  fmt: k=>`${k.util}%`,                                        better:"more" },
           { label:lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)",fmt: k=>`${k.totalOTMin}'`,                                  better:"less" },
-          { label:"⏩ % "+( lang==="pl"?"przysp.":"accel."),   fmt: (k,key)=> key==="rh"?`${k.pctAccelerated}%`:"0%",      better:"more" },
-          { label:lang==="pl"?"Wynik/dzień":"Result/day",     fmt: k=>`${k.financial.toLocaleString()} zł`,                better:"more" },
-          { label:lang==="pl"?"Dni do końca":"Days to finish", fmt: k=>`${k.days}`,                                        better:"less" },
+          { label:lang==="pl"?"⏩ % przysp.":"⏩ % accel.",              fmt: (k,key)=> key==="rh"?`${k.pctAccelerated}%`:"0%", better:"more" },
+          { label:lang==="pl"?"1. Przychód (zł)":"1. Revenue (zł)",       fmt: k=>`${k.revenueTotal.toLocaleString()}`,           better:"more" },
+          { label:lang==="pl"?"2. -Koszt OT (zł)":"2. -OT cost (zł)",     fmt: k=>`-${k.otCostTotal.toLocaleString()}`,           better:"less" },
+          { label:lang==="pl"?"3. Oszczędność sali":"3. OR savings",       fmt: (k,key)=> key==="rh" && saved>0 ? `+${k.saleSavingTotal.toLocaleString()}` : "—", better:"more" },
+          { label:lang==="pl"?"4. Wynik łącznie":"4. Total result",        fmt: k=>`${k.totalResult.toLocaleString()} zł`,         better:"more", highlight2:true },
+          { label:lang==="pl"?`5. Wynik/dzień (÷dni)`:`5. Result/day (÷days)`, fmt: k=>`${k.financial.toLocaleString()} zł`,     better:"more" },
         ];
 
         return (
@@ -3103,11 +3112,25 @@ export default function ORSimV5() {
                           {kpiData.map((s, i) => {
                             const num = parseFloat(vals[i]);
                             const isBest = best !== null && !isNaN(num) && num === best;
+                            const isDaysRow = row.highlight;
+                            const isFinRow = row.highlight2;
+                            const isRH = s.key === "rh";
+                            const hasSaving = saved > 0;
+                            const cellColor = isDaysRow
+                              ? (isRH && hasSaving ? "#6bcb77" : hasSaving ? "#ff6b6b" : s.color)
+                              : isFinRow ? (isBest ? "#6bcb77" : s.color)
+                              : isBest ? "#6bcb77" : s.color;
+                            const cellSize = isDaysRow ? 16 : (isFinRow || isBest) ? 13 : 12;
+                            const cellWeight = isDaysRow || isFinRow || isBest ? 700 : 400;
                             return (
                               <td key={s.key} style={{
                                 fontFamily:"'JetBrains Mono',monospace", textAlign:"center",
-                                fontWeight: isBest ? 700 : 400, fontSize: isBest ? 13 : 12,
-                                color: isBest ? "#6bcb77" : s.color,
+                                fontWeight: cellWeight, fontSize: cellSize,
+                                color: cellColor,
+                                background: isDaysRow ? (isRH && hasSaving ? "#6bcb7712" : hasSaving ? "#ff6b6b12" : "transparent")
+                                  : isFinRow ? "#ffffff08" : "transparent",
+                                padding: (isDaysRow || isFinRow) ? "6px 8px" : "4px 8px",
+                                borderTop: isFinRow ? "1px solid #252530" : "none",
                               }}>{vals[i]}</td>
                             );
                           })}
