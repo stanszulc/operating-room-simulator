@@ -16,7 +16,6 @@ const DEFAULT_PROC_PARAMS = {
 };
 const SURGEON_SKILL = { A: 0.92, B: 1.10, C: 1.00 };
 
-// ── i18n ──────────────────────────────────────────────────────────────────
 const T = {
   pl: {
     subtitle: "OR · Symulator Sali — v5",
@@ -73,7 +72,6 @@ const T = {
       surgeon: "Chirurg",
       carryOver: "⚠ Carry-over",
       day: "Dzień",
-      tableHeaders: ["Op","#Plan","Chir","Procedura","Plan","Start","Koniec (plan)","Rzecz.","Δ","Start real","Koniec real","Carry-over"],
     },
     planning: {
       modeTitle: "Tryb wyznaczania planu operacji",
@@ -84,40 +82,15 @@ const T = {
         custom: { label: "Własny",        desc: "ręczna korekta per procedura" },
         robust: { label: "Robust",        desc: "P80 per chirurg × procedura" },
       },
-      explainTitle: "Dlaczego planowanie ze średniej jest błędem?",
-      explainBody: "Rozkład log-normalny ma długi ogon po prawej — kilka bardzo długich operacji zawyża średnią znacznie powyżej mediany. Jeśli planujemy ze średniej,",
-      explainHighlight: " połowa operacji systematycznie przekracza plan",
-      explainSuffix: " — nie z winy chirurga, ale z powodu złego narzędzia statystycznego. P50 (mediana) jest odporna na wartości odstające. P80 daje bufor bezpieczeństwa.",
-      badges: { mean: "zawyżona", p50: "typowy", p80: "bezpieczny" },
-      offsetLabel: "Korekta planu (offset)",
-      offsetBase: "Baza P50",
-      diffTitle: "Porównanie planów — różnica średnia vs P50 per chirurg × procedura",
-      diffHeaders: ["Chirurg","Procedura","Średnia","P50","P80","Różnica śr.−P50","Aktywny plan"],
-    },
-    bias: {
-      bySurgeon: "Średni błąd planowania per chirurg (min)",
-      byProc: "Średni błąd planowania per procedura (min)",
-      scatter: "Plan vs Rzeczywistość — scatter",
-      idealPlan: "Idealny plan",
-      avgDelta: "Śr. Δ",
-    },
-    matrix: {
-      title: "Macierz Chirurg × Procedura",
-      headers: ["Chirurg","Procedura","Średnia","P50","P80","Aktywny plan"],
     },
     params: {
       distLabel: "Rozkład — czerwona = średnia, pomarańcz. = P50",
       surgeon: "Chirurg",
-      disruptTitle: "Parametry zakłóceń",
-      delayTitle: "Opóźnienie startu",
       delayOnTime: "Prawdopodobieństwo startu na czas",
       delayMean: "Średnie opóźnienie gdy wystąpi (min)",
-      sorTitle: "Przypadek z SOR",
       sorLambda: "Średnia liczba przypadków / dzień (λ)",
       sorDuration: "Średni czas operacji pilnej (min)",
-      sorPriority: "Priorytet SOR",
       sorPriorityOptions: ["Wyprzedza planowe", "Na koniec dnia"],
-      disruptOff: "Zakłócenia wyłączone — włącz w zakładce 1",
     },
     monte: {
       title: "Analiza Monte Carlo — porównanie strategii planowania",
@@ -125,13 +98,7 @@ const T = {
       runBtn: "▶ Uruchom analizę",
       running: "Liczenie...",
       iterations: "iteracji",
-      overtimeRate: "% dni z nadgodzinami",
-      carryOverRate: "% dni z carry-over",
-      avgDelay: "Średnie opóźnienie (min)",
-      p80Delay: "P80 opóźnienia (min)",
-      avgEnd: "Średni koniec dnia",
       modes: { mean: "Średnia", p50: "P50", p80: "P80", custom: "Własny", robust: "Robust" },
-      histTitle: "Rozkład godziny końca dnia",
       summaryTitle: "Podsumowanie — 4 strategie planowania",
       headers: ["Strategia", "% nadgodzin", "% carry-over", "Śr. opóźnienie", "P80 opóźnienia", "Śr. koniec"],
       hint: "Zamrożony plan · różne realizacje losowe",
@@ -205,7 +172,6 @@ const T = {
       surgeon: "Surgeon",
       carryOver: "⚠ Carry-over",
       day: "Day",
-      tableHeaders: ["Op","#Plan","Surg","Procedure","Plan","Start","End (plan)","Actual","Δ","Start real","End real","Carry-over"],
     },
     planning: {
       modeTitle: "Planning mode",
@@ -216,40 +182,15 @@ const T = {
         custom: { label: "Custom",        desc: "manual offset per procedure" },
         robust: { label: "Robust",        desc: "P80 per surgeon × procedure" },
       },
-      explainTitle: "Why planning from the mean is a mistake?",
-      explainBody: "The log-normal distribution has a long right tail — a few very long operations inflate the mean well above the median. Planning from the mean means",
-      explainHighlight: " half of operations systematically exceed the plan",
-      explainSuffix: " — not due to surgeon error, but due to the wrong statistical tool. P50 (median) is robust to outliers. P80 provides a safety buffer.",
-      badges: { mean: "inflated", p50: "typical", p80: "safe" },
-      offsetLabel: "Plan offset (minutes)",
-      offsetBase: "P50 base",
-      diffTitle: "Plan comparison — mean vs P50 per surgeon × procedure",
-      diffHeaders: ["Surgeon","Procedure","Mean","P50","P80","Diff mean−P50","Active plan"],
-    },
-    bias: {
-      bySurgeon: "Average planning error per surgeon (min)",
-      byProc: "Average planning error per procedure (min)",
-      scatter: "Plan vs Actual — scatter",
-      idealPlan: "Perfect plan",
-      avgDelta: "Avg Δ",
-    },
-    matrix: {
-      title: "Surgeon × Procedure matrix",
-      headers: ["Surgeon","Procedure","Mean","P50","P80","Active plan"],
     },
     params: {
       distLabel: "Distribution — red = mean, orange = P50",
       surgeon: "Surgeon",
-      disruptTitle: "Disruption parameters",
-      delayTitle: "Start delay",
       delayOnTime: "Probability of on-time start",
       delayMean: "Mean delay when it occurs (min)",
-      sorTitle: "Emergency case (SOR)",
       sorLambda: "Mean cases per day (λ)",
       sorDuration: "Mean emergency op duration (min)",
-      sorPriority: "SOR priority",
       sorPriorityOptions: ["Preempts scheduled ops", "Added at end of day"],
-      disruptOff: "Disruptions disabled — enable in tab 1",
     },
     monte: {
       title: "Monte Carlo Analysis — planning strategy comparison",
@@ -257,13 +198,7 @@ const T = {
       runBtn: "▶ Run analysis",
       running: "Computing...",
       iterations: "iterations",
-      overtimeRate: "% days with overtime",
-      carryOverRate: "% days with carry-over",
-      avgDelay: "Avg delay (min)",
-      p80Delay: "P80 delay (min)",
-      avgEnd: "Avg end of day",
       modes: { mean: "Mean", p50: "P50", p80: "P80", custom: "Custom", robust: "Robust" },
-      histTitle: "Distribution of end-of-day time",
       summaryTitle: "Summary — 4 planning strategies",
       headers: ["Strategy", "% overtime", "% carry-over", "Avg delay", "P80 delay", "Avg end"],
       hint: "Frozen plan · random realizations",
@@ -284,7 +219,6 @@ const T = {
   },
 };
 
-// ── math ──────────────────────────────────────────────────────────────────
 function randLognorm(mu, sigma) {
   const u1 = Math.random(), u2 = Math.random();
   const z = Math.sqrt(-2 * Math.log(Math.max(u1, 1e-10))) * Math.cos(2 * Math.PI * u2);
@@ -332,21 +266,16 @@ function generateHistory(procParams, n = SIM_HISTORY) {
   return matrix;
 }
 
-// Global plan — no surgeon differentiation (as a human planner would do manually)
 function getGlobalPlanned(procParams, proc, planMode, customOffsets) {
   const { mu, sigma } = procParams[proc] ?? { mu: 4.06, sigma: 0.28 };
   let base;
   if (planMode === "mean") base = Math.round(lognormMean(mu, sigma));
   else if (planMode === "p80")  base = Math.round(lognormP80(mu, sigma));
-  else                          base = Math.round(lognormP50(mu, sigma)); // p50
+  else                          base = Math.round(lognormP50(mu, sigma));
   const offset = customOffsets?.[proc] ?? 0;
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
 
-// ── MIT Robust Planning — Box Uncertainty Set ────────────────────────────
-// Allocates a total budget of Gamma × max_deviation across all operations.
-// Operations with higher σ (more variable) get proportionally more buffer.
-// Returns a map: { proc_surg_key → planned_minutes }
 function buildRobustPlan(plan, matrix, procParams, gamma, overtimeLimit = 0) {
   if (!plan || plan.length === 0) return {};
 
@@ -359,16 +288,13 @@ function buildRobustPlan(plan, matrix, procParams, gamma, overtimeLimit = 0) {
     return { proc: op.proc, chir: op.chir, p50, deviation, sigma };
   });
 
-  // Available buffer = day capacity minus sum of p50 minus prep
   const sumP50 = ops.reduce((a, o) => a + o.p50, 0);
   const prepTotal = PREP * (ops.length - 1);
   const availableBuffer = Math.max(0, (END - START + overtimeLimit) - sumP50 - prepTotal);
 
-  // MIT Box: total budget = min(Gamma × max_deviation, available buffer)
   const maxDev = Math.max(...ops.map(o => o.deviation), 1);
   const totalBudget = Math.min(gamma * maxDev, availableBuffer);
 
-  // Allocate proportionally to deviation
   const totalDev = ops.reduce((a, o) => a + o.deviation, 0) || 1;
   const result = {};
   ops.forEach(op => {
@@ -380,16 +306,13 @@ function buildRobustPlan(plan, matrix, procParams, gamma, overtimeLimit = 0) {
   return result;
 }
 
-// Robust plan — uses surgeon × procedure matrix (per-surgeon statistics)
 function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   if (planMode === "robust") {
-    // robustPlan map is passed via customOffsets._robustPlan
     const robustPlan = customOffsets?._robustPlan;
     if (robustPlan) {
       const key = `${proc}__${surg}`;
       return robustPlan[key] ?? 60;
     }
-    // fallback: p80 per surgeon
     const cell = matrix[proc]?.[surg];
     if (!cell) return 60;
     return Math.max(10, Math.round(cell.p80 / 5) * 5);
@@ -404,63 +327,32 @@ function getPlanned(matrix, proc, surg, planMode, customOffsets) {
   return Math.max(10, Math.round((base + offset) / 5) * 5);
 }
 
-// ── Robust Plan Optimizer — Stable v1 ────────────────────────────────────
-// Sorts operations by CV (predictable first) within each day.
-// No cross-day borrowing — simulation uses same plan each day.
-function optimizePlan(slots, procParams, matrix, gamma, overtimeLimit, numDays, planningWindow) {
-  const validSlots = slots.filter(s => s.proc !== null);
-  if (validSlots.length === 0) return { slots, dayPlans: null, totalDays: numDays, saved: 0 };
-
-  // Score each slot by CV
-  const scored = validSlots.map(s => {
-    const { mu, sigma } = procParams[s.proc] ?? { mu: 4.06, sigma: 0.28 };
-    const p50 = Math.round(lognormP50(mu, sigma));
-    const p80 = Math.round(lognormP80(mu, sigma));
-    return { ...s, cv: sigma/mu, p50, deviation: Math.max(0, p80-p50) };
-  });
-
-  // Sort by CV — predictable first
-  const sorted = [...scored].sort((a, b) => a.cv - b.cv);
-  const newSlots = sorted.map(({ cv, p50, deviation, ...s }) => s);
-
-  // Pad to original length
-  while (newSlots.length < slots.length) newSlots.push({ proc: null, chir: "A" });
-
-  return { slots: newSlots, dayPlans: null, totalDays: numDays, saved: 0 };
-}
 // ── Rolling Horizon Optimizer ─────────────────────────────────────────────
-// Builds per-day schedule using P50. After each day's ops are placed,
-// checks remaining time and borrows shortest op from next N days.
-// Returns dayPlans: array of days, each day is array of {proc, chir}.
-// Total ops = numDays × validSlots.length (no fictional ops created).
+// FIX: HARD_END reduced by 75 min to leave room for SOR cases at end of day
 function buildRollingHorizonPlan(slots, procParams, overtimeLimit, numDays, planningWindow) {
   const validSlots = slots.filter(s => s.proc !== null);
   if (validSlots.length === 0) return [];
 
-  const HARD_END = END + overtimeLimit;
+  const HARD_END = END + overtimeLimit - 75; // bufor na SOR
 
-  // Score each op by p50
   const score = (op) => {
     const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
     return { ...op, p50: Math.round(lognormP50(mu, sigma)) };
   };
 
-  // Build initial schedule: each day has same ops as base plan
   let schedule = Array.from({ length: numDays }, () =>
     validSlots.map(s => score({ ...s }))
   );
 
   for (let d = 0; d < schedule.length; d++) {
-    // Calculate time used today with P50
     let usedTime = 0;
     for (const op of schedule[d]) {
       usedTime += (usedTime > 0 ? PREP : 0) + op.p50;
     }
     let timeLeft = HARD_END - START - usedTime;
 
-    // Cascade: borrow shortest fitting op from next N days
     let borrowed = true;
-    while (borrowed && timeLeft >= PREP + 55) { // 55 = shortest op
+    while (borrowed && timeLeft >= PREP + 55) {
       borrowed = false;
       let bestOp = null, bestDay = -1, bestIdx = -1;
 
@@ -485,14 +377,12 @@ function buildRollingHorizonPlan(slots, procParams, overtimeLimit, numDays, plan
     }
   }
 
-  // Remove empty days at end, strip p50 scoring
   return schedule
     .filter(day => day.length > 0)
     .map(day => day.map(({ p50, ...op }) => op));
 }
 
 function samplePoisson(lambda) {
-  // Knuth algorithm
   const L = Math.exp(-lambda);
   let k = 0, p = 1;
   do { k++; p *= Math.random(); } while (p > L);
@@ -501,11 +391,9 @@ function samplePoisson(lambda) {
 
 function sampleStartDelay(onTimeProbability, meanDelay) {
   if (Math.random() < onTimeProbability) return 0;
-  // exponential distribution: -meanDelay * ln(U)
   return Math.round(-meanDelay * Math.log(Math.max(Math.random(), 1e-10)));
 }
 
-// ── Multi-day simulation ──────────────────────────────────────────────────
 function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, numDays, overtimeLimit, disruptions = {}) {
   const { enableDelay=false, delayOnTime=0.7, delayMean=20,
           enableSor=false, sorLambda=1, sorDuration=60, sorPriority="end" } = disruptions;
@@ -513,7 +401,6 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
   let carryQueue = [];
   let globalPlanId = 0;
 
-  // helper — picks global or robust planning based on mode
   const calcPlanned = (proc, surg) => {
     if (planMode === "robust") return getPlanned(matrix, proc, surg, "robust", customOffsets);
     return getGlobalPlanned(procParams, proc, planMode, customOffsets);
@@ -522,7 +409,6 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
   const days = [];
 
   for (let d = 0; d < numDays; d++) {
-    // fresh plan ops get new continuous IDs each day
     const freshOps = plan.map((op) => ({ ...op, planId: ++globalPlanId, isCarryOver: false }));
     const todayPlan = [
       ...carryQueue.map(op => ({ ...op, isCarryOver: true })),
@@ -530,10 +416,8 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
     ];
     carryQueue = [];
 
-    // ── start delay disruption ──
     const startDelay = enableDelay ? sampleStartDelay(delayOnTime, delayMean) : 0;
 
-    // ── SOR cases for this day ──
     const sorCases = [];
     if (enableSor) {
       const nSor = samplePoisson(sorLambda);
@@ -549,12 +433,11 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
     let tPlan = START;
     const rows = [];
     let overflowed = false;
-    let sorQueue = [...sorCases]; // SOR cases not yet inserted
+    let sorQueue = [...sorCases];
 
     for (let i = 0; i < todayPlan.length; i++) {
       const op = todayPlan[i];
 
-      // ── insert SOR preempt cases that arrive before this op starts ──
       if (sorPriority === "preempt") {
         while (sorQueue.length > 0 && sorQueue[0].arrivalMin <= tReal) {
           const sor = sorQueue.shift();
@@ -582,7 +465,6 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
       const startPlan = tPlan;
       const endPlan = startPlan + planned;
 
-      // carry-over if: already overflowed, OR planned end exceeds limit, OR actual end exceeds limit
       if (overflowed || endPlan > HARD_END || endReal > HARD_END) {
         overflowed = true;
         carryQueue.push({ proc: op.proc, chir: op.chir, planId: op.planId });
@@ -608,7 +490,6 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
       tPlan = endPlan + PREP;
     }
 
-    // ── append SOR cases at end of day if priority = "end" ──
     if (sorPriority === "end") {
       for (const sor of sorQueue.length > 0 ? sorCases : []) {
         if (!overflowed && tReal + sor.duration <= HARD_END) {
@@ -637,7 +518,6 @@ function simulateMultiDay(plan, procParams, matrix, planMode, customOffsets, num
   return days;
 }
 
-// ── Days-to-complete simulation ───────────────────────────────────────────
 function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffsets, overtimeLimit, disruptions = {}, prepackedDayPlans = null) {
   const { enableDelay=false, delayOnTime=0.7, delayMean=20 } = disruptions;
   const HARD_END = END + overtimeLimit;
@@ -648,7 +528,6 @@ function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffset
     return getGlobalPlanned(procParams, proc, planMode, customOffsets);
   };
 
-  // If pre-packed day plans provided — count days directly with carry-over simulation
   if (prepackedDayPlans) {
     let queue = prepackedDayPlans.flat().map((op, i) => ({ ...op, id: i }));
     let day = 0;
@@ -670,7 +549,6 @@ function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffset
     return day;
   }
 
-  // Standard: flat queue, simulate until empty
   let queue = plan.map((op, i) => ({ ...op, id: i }));
   let day = 0;
 
@@ -701,14 +579,12 @@ function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffset
   }
   return day;
 }
-// Returns { base: days[], robust: days[] } using same random draws
+
 function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions = {}, robustPlanOverride = null, externalDraws = null) {
   const { enableDelay=false, delayOnTime=0.7, delayMean=20,
           enableSor=false, sorLambda=1, sorDuration=60, sorPriority="end" } = disruptions;
   const HARD_END = END + overtimeLimit;
 
-  // Pre-generate all random draws for the entire period
-  // Each op per day gets: actual duration, SOR cases, start delay
   const draws = externalDraws ?? Array.from({ length: numDays }, (_, d) => {
     const startDelay = enableDelay ? sampleStartDelay(delayOnTime, delayMean) : 0;
     const sorCases = [];
@@ -721,7 +597,6 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
       }
       sorCases.sort((a, b) => a.arrivalMin - b.arrivalMin);
     }
-    // pre-draw actuals for each plan slot
     const actuals = plan.map(op => {
       const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
       const skill = SURGEON_SKILL[op.chir] ?? 1;
@@ -730,11 +605,10 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
     return { startDelay, sorCases, actuals };
   });
 
-  // Run one plan variant using pre-drawn actuals
   const runPlan = (planModeFn, planArg) => {
     const usePlan = planArg ?? plan;
     let carryQueue = [];
-    let sorCarryQueue = []; // SOR cases that didn't fit — carry to next day as priority
+    let sorCarryQueue = [];
     let globalPlanId = 0;
     const days = [];
 
@@ -742,7 +616,6 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
       const { startDelay, sorCases, actuals } = draws[d];
       const freshOps = usePlan.map((op, i) => ({ ...op, planId: ++globalPlanId, isCarryOver: false, _actualIdx: i }));
 
-      // SOR carry-overs from previous day go first (preempt)
       const todaySorCarry = [...sorCarryQueue];
       sorCarryQueue = [];
 
@@ -759,7 +632,6 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
       let sorQueue = [...sorCases];
       let freshIdx = 0;
 
-      // Insert carried-over SOR cases at start of day (priority)
       for (const sor of todaySorCarry) {
         if (tReal + sor.duration <= HARD_END) {
           rows.push({
@@ -772,7 +644,7 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
           tReal += sor.duration + PREP;
           tPlan = tReal;
         } else {
-          sorCarryQueue.push(sor); // still doesn't fit, carry again
+          sorCarryQueue.push(sor);
         }
       }
 
@@ -793,13 +665,12 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
               tReal += sor.duration + PREP;
               tPlan = tReal;
             } else {
-              sorCarryQueue.push(sor); // carry to next day
+              sorCarryQueue.push(sor);
             }
           }
         }
 
         const planned = planModeFn(op.proc, op.chir);
-        // use pre-drawn actual for fresh ops; for carry-overs re-draw
         const actual = op.isCarryOver
           ? Math.max(15, Math.round(randLognorm(
               procParams[op.proc]?.mu ?? 4.06,
@@ -843,7 +714,7 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
             });
             tReal += sor.duration + PREP;
           } else {
-            sorCarryQueue.push(sor); // carry to next day as priority
+            sorCarryQueue.push(sor);
           }
         }
       }
@@ -861,7 +732,6 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
 
   const baseFn = (proc, surg) => getGlobalPlanned(procParams, proc, planMode, customOffsets);
 
-  // Build robust plan — use override plan if provided (optimized), otherwise same as base plan
   const planForRobust = robustPlanOverride ?? plan;
   const robustPlanMap = buildRobustPlan(planForRobust, matrix, procParams, robustLevel, overtimeLimit);
   const robustFn = (proc, surg) => getPlanned(matrix, proc, surg, "robust", {
@@ -876,32 +746,28 @@ function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustL
 }
 
 // ── Simulate Optimized Plan (Rolling Horizon) ────────────────────────────
-// Takes dayPlans (variable ops per day) and pre-drawn actuals from simulateDual.
-// Uses same random draws for fair comparison.
+// FIX: removed debug console.log lines
 function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptions = {}) {
   const { sorPriority = "end" } = disruptions;
   const HARD_END = END + overtimeLimit;
+  const SOR_HARD_END = END + overtimeLimit + 90; // SOR wchodzi zawsze — wydłużamy dzień o max 90 min
 
   let carryQueue = [];
   let sorCarryQueue = [];
   let globalPlanId = 0;
   const days = [];
   const totalDays = dayPlans.length;
-  const MAX_EXTRA_DAYS = 5; // safety limit
+  const MAX_EXTRA_DAYS = 5;
 
-  // Build flat actuals pool from draws (reuse same random values)
   const actualsPool = draws.flatMap(d => d.actuals);
   let actualIdx = 0;
 
-  // Run planned days + extra days for carry-over
   const totalDaysWithExtra = totalDays + MAX_EXTRA_DAYS;
 
   for (let d = 0; d < totalDaysWithExtra; d++) {
-    // after planned days — only continue if there's carry-over
     if (d >= totalDays && carryQueue.length === 0 && sorCarryQueue.length === 0) break;
 
     const draw = draws[Math.min(d, draws.length - 1)];
-    // extra days have no new SOR/delay — only carry-over is handled
     const startDelay = d < totalDays ? draw.startDelay : 0;
     const sorCases = d < totalDays ? draw.sorCases : [];
 
@@ -912,7 +778,7 @@ function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptio
       ? dayPlans[d].map(op => ({
           ...op, planId: ++globalPlanId, isCarryOver: false, isAccelerated: op.isAccelerated ?? false
         }))
-      : []; // extra carry-over days have no new ops
+      : [];
     const todayPlan = [
       ...carryQueue.map(op => ({ ...op, isCarryOver: true })),
       ...freshOps,
@@ -924,7 +790,6 @@ function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptio
     const rows = [];
     let overflowed = false;
 
-    // SOR carry from previous day
     for (const sor of todaySorCarry) {
       if (tReal + sor.duration <= HARD_END) {
         rows.push({
@@ -972,20 +837,21 @@ function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptio
       tPlan = endPlan + PREP;
     }
 
-    if (sorPriority === "end") {
-      for (const sor of sorCases) {
-        if (tReal + sor.duration <= HARD_END) {
-          rows.push({
-            id: rows.length+1, planId:"SOR", dayIdx:d, chir:"SOR",
-            proc:"Emergency (SOR)", isCarryOver:false, isSor:true,
-            startPlan:tReal, endPlan:tReal+sor.duration,
-            startReal:tReal, endReal:tReal+sor.duration,
-            planned:sor.duration, actual:sor.duration, delay:0,
-          });
-          tReal += sor.duration + PREP;
-        } else {
-          sorCarryQueue.push(sor);
-        }
+    // Obsłuż SOR-y na końcu dnia — simulateOptimized nie ma trybu preempt,
+    // zawsze wstawiamy wszystkie sorCases na koniec dnia
+    const pendingSors = sorCases;
+    for (const sor of pendingSors) {
+      if (tReal + sor.duration <= SOR_HARD_END) {
+        rows.push({
+          id: rows.length+1, planId:"SOR", dayIdx:d, chir:"SOR",
+          proc:"Emergency (SOR)", isCarryOver:false, isSor:true,
+          startPlan:tReal, endPlan:tReal+sor.duration,
+          startReal:tReal, endReal:tReal+sor.duration,
+          planned:sor.duration, actual:sor.duration, delay:0,
+        });
+        tReal += sor.duration + PREP;
+      } else {
+        sorCarryQueue.push(sor);
       }
     }
 
@@ -995,7 +861,7 @@ function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptio
       sorCarryCount: sorCarryQueue.length,
       lastEnd: rows.at(-1)?.endReal ?? START,
       startDelay, sorCount: sorCases.length,
-      sorExecuted: rows.filter(r => r.isSor && !r.isCarryOver).length,
+      sorExecuted: rows.filter(r => r.isSor).length,
     });
   }
 
@@ -1007,7 +873,6 @@ function minToTime(m) {
   return `${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
 }
 
-// ── Gantt ──────────────────────────────────────────────────────────────────
 const DAY_W = END - START + 60;
 function px(min, width) { return ((min - START) / DAY_W) * width; }
 
@@ -1079,7 +944,6 @@ function ModeBtn({ mode, active, onClick, label, desc, color }) {
   );
 }
 
-// ── Schedule Builder ──────────────────────────────────────────────────────
 function buildRandomPlan(n) {
   return Array.from({ length: n }, () => ({
     proc: PROCS[Math.floor(Math.random() * PROCS.length)],
@@ -1087,7 +951,6 @@ function buildRandomPlan(n) {
   }));
 }
 
-// Demo plan — fixed mix designed to show free slots + Rolling Horizon savings
 function buildDemoPlan() {
   return [
     { proc: "Cholecystectomy",  chir: "C" },
@@ -1096,9 +959,6 @@ function buildDemoPlan() {
     { proc: "Appendectomy",     chir: "C" },
     { proc: "Hernia Repair",    chir: "B" },
   ];
-}
-function buildEmptySlots(n) {
-  return Array.from({ length: n }, () => ({ proc: null, chir: "A" }));
 }
 
 function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planColor, numDays }) {
@@ -1137,14 +997,12 @@ function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planCol
       </div>
       {daysData.map(({ d, bars, lastEnd, overtime }) => (
         <div key={d} style={{ marginBottom:14 }}>
-          {/* day header */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
             <span style={{ fontSize:10, color:"#e07b39", fontWeight:700, fontFamily:"'Syne',sans-serif" }}>Day {d + 1}</span>
             <span style={{ fontSize:10, fontFamily:"'JetBrains Mono',monospace", color: overtime ? "#ff6b6b" : "#6bcb77" }}>
               {minToTime(lastEnd)}{overtime ? " ⚠" : " ✓"}
             </span>
           </div>
-          {/* time axis */}
           <div style={{ position:"relative", height:14, marginBottom:2 }}>
             {Array.from({ length: 9 }, (_, i) => (8 + i) * 60).map(m => (
               <span key={m} style={{ position:"absolute", left:((m-START)/DAY_W)*W,
@@ -1153,7 +1011,6 @@ function MiniGantt({ slots, matrix, procParams, planMode, customOffsets, planCol
               </span>
             ))}
           </div>
-          {/* bars row */}
           <div style={{ position:"relative", height:22 }}>
             <div style={{ position:"absolute", left:((END-START)/DAY_W)*W, top:0, bottom:0, width:1, background:"#ff6b6b33" }} />
             {bars.map((bar) => {
@@ -1208,7 +1065,6 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, mat
   return (
     <div>
       <div style={{ display:"grid", gridTemplateColumns:"180px 1fr", gap:16 }}>
-        {/* left: pool */}
         <div>
           <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:10, fontFamily:"'JetBrains Mono',monospace" }}>{t.pool}</div>
           {PROCS.map(proc => {
@@ -1227,7 +1083,6 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, mat
           <div style={{ marginTop:12, fontSize:10, color:"#333", lineHeight:1.6, fontFamily:"'JetBrains Mono',monospace" }}>{t.hint}</div>
         </div>
 
-        {/* right: slots */}
         <div>
           <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
             <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.opsCount}:</span>
@@ -1293,7 +1148,6 @@ function ScheduleBuilder({ slots, setSlots, opsCount, setOpsCount, onRun, t, mat
   );
 }
 
-// ── Multi-day Gantt display ───────────────────────────────────────────────
 function MultiDayGantt({ days, planColor, t }) {
   const W = 560;
   return (
@@ -1304,7 +1158,6 @@ function MultiDayGantt({ days, planColor, t }) {
         const accelerated = rows.filter(r => r.isAccelerated).length;
         return (
           <div key={dayIdx} style={{ marginBottom:20 }}>
-            {/* day header */}
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
               <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                 <span style={{ fontSize:11, fontWeight:700, color:"#e07b39", fontFamily:"'Syne',sans-serif", letterSpacing:"0.05em" }}>
@@ -1335,13 +1188,11 @@ function MultiDayGantt({ days, planColor, t }) {
                 {minToTime(lastEnd)}{overtime ? " ⚠" : " ✓"}
               </div>
             </div>
-            {/* axis + rows */}
             <div style={{ overflowX:"auto" }}>
               <div style={{ minWidth:700 }}>
                 <div style={{ display:"grid", gridTemplateColumns:"120px 1fr" }}>
                   <div /><TimeAxis width={W} />
                 </div>
-                {/* end-of-day line */}
                 <div style={{ position:"relative" }}>
                   <div style={{ position:"absolute", left: 120 + px(END, W), top:0, bottom:0, width:1, background:"#ff6b6b44", zIndex:1 }} />
                   {rows.map(row => (
@@ -1369,7 +1220,6 @@ function MultiDayGantt({ days, planColor, t }) {
   );
 }
 
-// ── localStorage hook ─────────────────────────────────────────────────────
 function useLocalStorage(key, defaultValue) {
   const [value, setValue] = useState(() => {
     try {
@@ -1387,7 +1237,34 @@ function useLocalStorage(key, defaultValue) {
   return [value, setStored];
 }
 
-// ── main ──────────────────────────────────────────────────────────────────
+
+// ── calcKPI — shared KPI computation for all strategy tabs ────────────────
+function calcKPI(d, totalD, { overtimeLimit, revenuePerMin, overtimeCostPerMin, dayOperatingCost, saved = 0 } = {}) {
+  if (!d) return null;
+  const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
+  const totalOTMinAll = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
+  const carryOver = allR.filter(r => r.isCarryOver && !r.isAccelerated).length;
+  const accelerated = allR.filter(r => r.isAccelerated).length;
+  const pctAccelerated = allR.length > 0 ? Math.round(accelerated / allR.length * 100) : 0;
+  const eff = allR.length ? ((allR.reduce((a,r)=>a+r.actual,0)+PREP*(allR.length-1))/((END-START+(overtimeLimit??0))*totalD)*100).toFixed(1) : "—";
+  const util = allR.length ? (allR.reduce((a,r)=>a+r.actual,0)/((END-START+(overtimeLimit??0))*totalD)*100).toFixed(1) : "—";
+  const otcr = allR.length ? Math.round(allR.filter(r=>r.delay<=0).length/allR.length*100) : 0;
+  const lastEnd = d.at(-1)?.lastEnd ?? END;
+  const totalActual = allR.reduce((a,r)=>a+r.actual,0);
+  const revenueTotal = Math.round(totalActual * (revenuePerMin ?? 0));
+  const otCostTotal = Math.round(totalOTMinAll * (overtimeCostPerMin ?? 0));
+  const saleSavingTotal = (saved ?? 0) * (dayOperatingCost ?? 0) * 1000;
+  const totalResult = revenueTotal - otCostTotal + saleSavingTotal;
+  const financial = Math.round(totalResult / totalD);
+  const sorCount = d.reduce((a,x)=>a+(x.sorCount??0),0);
+  return {
+    otcr, carryOver, eff, util, lastEnd, overtime: lastEnd > END,
+    totalOTMin: Math.round(totalOTMinAll/totalD),
+    financial, accelerated, pctAccelerated, days: totalD, sorCount,
+    revenueTotal, otCostTotal, saleSavingTotal, totalResult,
+  };
+}
+
 export default function ORSimV5() {
   const [procParams, setProcParams]     = useLocalStorage("or_procParams", DEFAULT_PROC_PARAMS);
   const [planMode, setPlanMode]         = useLocalStorage("or_planMode", "mean");
@@ -1398,11 +1275,10 @@ export default function ORSimV5() {
   const [opsCount, setOpsCount]         = useLocalStorage("or_opsCount", 5);
   const [slots, setSlots]               = useLocalStorage("or_slots", buildDemoPlan());
   const [slotsRobust, setSlotsRobust]   = useState(null);
-  const [optimizedDayPlans, setOptimizedDayPlans] = useState(null); // reserved for future use
+  const [optimizedDayPlans, setOptimizedDayPlans] = useState(null);
   const [daysOptimized, setDaysOptimized] = useState(null);
-  const [allStrategiesDays, setAllStrategiesDays] = useState(null); // {mean, p50, p80, custom, robust, rh}
+  const [allStrategiesDays, setAllStrategiesDays] = useState(null);
 
-  // disruption state
   const [enableDelay, setEnableDelay]   = useLocalStorage("or_enableDelay", false);
   const [delayOnTime, setDelayOnTime]   = useLocalStorage("or_delayOnTime", 0.7);
   const [delayMean, setDelayMean]       = useLocalStorage("or_delayMean", 20);
@@ -1444,11 +1320,9 @@ export default function ORSimV5() {
     const robustPlan = slotsRobust ? slotsRobust.filter(s => s.proc !== null) : null;
     const result = simulateDual(validPlan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, robustPlan);
     setDualDays(result);
-    // build rolling horizon plan and simulate with same draws
     const rhDayPlans = buildRollingHorizonPlan(slots, procParams, overtimeLimit, numDays, planningWindow);
     const rhDays = simulateOptimized(rhDayPlans, procParams, result.draws, overtimeLimit, disruptions);
     setDaysOptimized(rhDays);
-    // simulate all 5 strategies using same draws for fair comparison
     const allStrats = {};
     for (const mode of ["mean", "p50", "p80", "custom"]) {
       const r = simulateDual(validPlan, procParams, matrix, mode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, null, result.draws);
@@ -1477,10 +1351,8 @@ export default function ORSimV5() {
     setMcRunning(true);
     setMcResults(null);
 
-    // run async to allow UI to update
     setTimeout(() => {
       const modes = ["mean", "p50", "p80", "custom", "robust"];
-      // for robust mode — use optimized plan if available
       const robustPlanForMC = (slotsRobust && slotsRobust.filter(s => s.proc !== null).length > 0)
         ? slotsRobust.filter(s => s.proc !== null)
         : validPlan;
@@ -1494,7 +1366,6 @@ export default function ORSimV5() {
         const totalPlannedMins = [], totalActualMins = [], opsOnTime = [], opsLate = [], daysToFinish = [];
         for (let i = 0; i < nIter; i++) {
           const sim = simulateMultiDay(planForMode, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
-          if (i === 0 && mode === "mean") console.log("sim debug:", sim, "planForMode:", planForMode, "numDays:", numDays);
           const allR = sim.flatMap(d => d.rows).filter(r => !r.isSor);
           const lastE = sim.at(-1)?.lastEnd ?? END;
           const totalD = allR.reduce((a, r) => a + Math.max(0, r.delay), 0);
@@ -1512,7 +1383,6 @@ export default function ORSimV5() {
           const financial = Math.round((totalOpsMinAll * revenuePerMin - totalOTMin * overtimeCostPerMin) / numDays);
           const nOnTime = allR.filter(r => r.delay <= 0).length;
           const nLate   = allR.filter(r => r.delay > 0).length;
-          // days to complete: simulate until all ops from full period are done
           const fullPeriodPlan = Array.from({ length: numDays }, () => planForMode).flat();
           const dtc = simulateDaysToComplete(fullPeriodPlan, procParams, matrix, mode, customOffsets, overtimeLimit, disruptions, null);
           endTimes.push(lastE);
@@ -1584,7 +1454,15 @@ export default function ORSimV5() {
   const [lastOptimizeResult, setLastOptimizeResult] = useState(null);
 
   const handleOptimize = useCallback(() => {
-    const result = optimizePlan(slots, procParams, matrix, robustLevel, overtimeLimit, numDays, planningWindow);
+    // Sortuj sloty po CV (najbardziej przewidywalne pierwsze) — bez cross-day borrowing
+    const validSlots = slots.filter(s => s.proc !== null);
+    const scored = validSlots.map(s => {
+      const { mu, sigma } = procParams[s.proc] ?? { mu: 4.06, sigma: 0.28 };
+      return { ...s, cv: sigma / mu };
+    });
+    const sorted = scored.sort((a, b) => a.cv - b.cv).map(({ cv, ...s }) => s);
+    while (sorted.length < slots.length) sorted.push({ proc: null, chir: "A" });
+    const result = { slots: sorted, totalDays: numDays, saved: 0 };
     setSlotsRobust(result.slots);
     setLastOptimizeResult(result);
     const basePlan = slots.filter(s => s.proc !== null);
@@ -1599,7 +1477,6 @@ export default function ORSimV5() {
   const setOffset = (proc, val) =>
     setCustomOffsets(prev => ({ ...prev, [proc]: val }));
 
-  // ── KPIs (aggregate across all days) ──
   const allRows = days.flatMap(d => d.rows);
   const sumDelay   = allRows.reduce((a, r) => a + r.delay, 0);
   const totalDelay = allRows.reduce((a, r) => a + Math.max(0, r.delay), 0);
@@ -1665,7 +1542,6 @@ export default function ORSimV5() {
         ::-webkit-scrollbar-thumb{background:#2a2a38;border-radius:3px}
       `}</style>
 
-      {/* header */}
       <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:20 }}>
         <div>
           <div style={{ fontSize:10, letterSpacing:"0.2em", color:"#333", textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace", marginBottom:6 }}>{t.subtitle}</div>
@@ -1676,7 +1552,6 @@ export default function ORSimV5() {
           </div>
         </div>
         <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-          {/* days slider */}
           <div style={{ display:"flex", alignItems:"center", gap:8, background:"#111118", border:"1px solid #1e1e2a", borderRadius:8, padding:"8px 14px" }}>
             <span style={{ fontSize:11, color:"#666", whiteSpace:"nowrap" }}>{t.daysLabel}:</span>
             <input type="range" min={1} max={30} step={1} value={numDays}
@@ -1684,7 +1559,6 @@ export default function ORSimV5() {
               style={{ width:80, accentColor:"#e07b39", cursor:"pointer" }} />
             <span style={{ fontSize:14, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace", minWidth:16 }}>{numDays}</span>
           </div>
-          {/* overtime slider */}
           <div style={{ display:"flex", alignItems:"center", gap:8, background:"#111118", border:"1px solid #1e1e2a", borderRadius:8, padding:"8px 14px" }}>
             <span style={{ fontSize:11, color:"#666", whiteSpace:"nowrap" }}>{t.overtimeLabel}:</span>
             <input type="range" min={0} max={120} step={15} value={overtimeLimit}
@@ -1692,7 +1566,6 @@ export default function ORSimV5() {
               style={{ width:80, accentColor:"#ff6b6b", cursor:"pointer" }} />
             <span style={{ fontSize:14, fontWeight:700, color:"#ff6b6b", fontFamily:"'JetBrains Mono',monospace", minWidth:32 }}>{overtimeLimit}'</span>
           </div>
-          {/* lang */}
           <div style={{ display:"flex", borderRadius:8, overflow:"hidden", border:"1px solid #252530" }}>
             {["pl","en"].map(l => (
               <button key={l} onClick={() => setLang(l)} style={{ padding:"8px 14px", background: lang===l?"#e07b39":"transparent", color: lang===l?"#fff":"#555", border:"none", cursor:"pointer", fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:12, transition:"all 0.15s" }}>{l.toUpperCase()}</button>
@@ -1703,7 +1576,6 @@ export default function ORSimV5() {
         </div>
       </div>
 
-      {/* ── HELP MODAL ── */}
       {showHelp && (
         <div onClick={() => setShowHelp(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
           <div onClick={e => e.stopPropagation()} style={{ background:"#111118", border:"1px solid #1e1e2a", borderRadius:12, padding:"28px 32px", maxWidth:580, width:"100%", maxHeight:"80vh", overflowY:"auto", position:"relative" }}>
@@ -1723,7 +1595,6 @@ export default function ORSimV5() {
         </div>
       )}
 
-      {/* KPIs — 7 cards */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(9,1fr)", gap:8, marginBottom:16 }}>
         {[
           { val:`${sumDelay>0?"+":""}${sumDelay}'`, label:t.kpi.sumDelay, color:sumDelay>0?"#ff6b6b":sumDelay<0?"#6bcb77":"#888" },
@@ -1743,14 +1614,12 @@ export default function ORSimV5() {
         ))}
       </div>
 
-      {/* tabs */}
       <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
         {Object.entries(t.tabs).map(([k,lbl]) => (
           <button key={k} className={`tab ${activeTab===k?"tab-active":"tab-inactive"}`} onClick={()=>setActiveTab(k)}>{lbl}</button>
         ))}
       </div>
 
-      {/* ── SCHEDULE tab ── */}
       {activeTab === "schedule" && (
         <div className="card">
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
@@ -1793,18 +1662,14 @@ export default function ORSimV5() {
             onRun={runSim} t={t.schedule} matrix={matrix} procParams={procParams} planMode={planMode}
             customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color} numDays={numDays}
             robustLevel={robustLevel} slotsRobust={slotsRobust} />
-
           <div style={{ marginTop:10, fontSize:11, color:"#555", fontFamily:"'JetBrains Mono',monospace" }}>
             ↳ {lang==="pl" ? "Parametry symulacji w zakładce Ustawienia" : "Simulation parameters in Settings tab"}
           </div>
         </div>
       )}
 
-      {/* ── SETTINGS tab ── */}
       {activeTab === "settings" && (
         <div style={{ display:"grid", gap:14 }}>
-
-          {/* SEKCJA: Harmonogram */}
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
               marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -1832,7 +1697,6 @@ export default function ORSimV5() {
             </div>
           </div>
 
-          {/* SEKCJA: Tryb planu + Robust */}
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
               marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -1873,14 +1737,12 @@ export default function ORSimV5() {
             </div>
           </div>
 
-          {/* SEKCJA: Zakłócenia */}
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
               marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
               ⚡ {lang==="pl" ? "Zakłócenia" : "Disruptions"}
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              {/* Delay */}
               <div style={{ background: enableDelay ? "#ff9f4314" : "#111118",
                 border:`1px solid ${enableDelay ? "#ff9f4366" : "#1e1e2a"}`, borderRadius:8, padding:"14px 16px" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: enableDelay ? 14 : 0,
@@ -1918,7 +1780,6 @@ export default function ORSimV5() {
                   </div>
                 )}
               </div>
-              {/* SOR */}
               <div style={{ background: enableSor ? "#ff224414" : "#111118",
                 border:`1px solid ${enableSor ? "#ff224466" : "#1e1e2a"}`, borderRadius:8, padding:"14px 16px" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: enableSor ? 14 : 0,
@@ -1970,7 +1831,6 @@ export default function ORSimV5() {
             </div>
           </div>
 
-          {/* SEKCJA: Finanse */}
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
               marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -1994,12 +1854,9 @@ export default function ORSimV5() {
               ))}
             </div>
           </div>
-
         </div>
       )}
 
-
-      {/* ── PARAMS tab ── */}
       {activeTab === "params" && (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
           {Object.entries(procParams).map(([proc, { mu, sigma }]) => {
@@ -2052,12 +1909,10 @@ export default function ORSimV5() {
         </div>
       )}
 
-      {/* ── GANTT tab ── */}
       {activeTab === "gantt" && (() => {
         const planColor = MODE_CONFIG[planMode].color;
         const robustColor = "#00d4ff";
 
-        // summary stats helper
         const summary = (d) => {
           const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
           const overtime = d.at(-1)?.lastEnd > END;
@@ -2071,7 +1926,6 @@ export default function ORSimV5() {
 
         return (
           <div style={{ display:"grid", gap:12 }}>
-            {/* legend */}
             <div className="card" style={{ padding:"10px 16px" }}>
               <div style={{ display:"flex", gap:20, flexWrap:"wrap", fontSize:11 }}>
                 <span style={{ display:"flex", alignItems:"center", gap:6, color:"#666" }}>
@@ -2099,9 +1953,7 @@ export default function ORSimV5() {
               </div>
             </div>
 
-            {/* two gantts side by side */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-              {/* base plan */}
               <div className="card" style={{ borderTop:`2px solid ${planColor}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                   <span style={{ fontSize:12, fontWeight:700, color:planColor }}>{MODE_CONFIG[planMode].label}</span>
@@ -2112,8 +1964,6 @@ export default function ORSimV5() {
                 </div>
                 <MultiDayGantt days={days} planColor={planColor} t={t.gantt} />
               </div>
-
-              {/* robust plan */}
               <div className="card" style={{ borderTop:`2px solid ${robustColor}` }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                   <span style={{ fontSize:12, fontWeight:700, color:robustColor }}>Robust Γ={robustLevel.toFixed(1)}</span>
@@ -2126,7 +1976,6 @@ export default function ORSimV5() {
               </div>
             </div>
 
-            {/* comparison summary */}
             <div className="card">
               <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
                 marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -2181,7 +2030,6 @@ export default function ORSimV5() {
               </table>
             </div>
 
-            {/* detail tables side by side */}
             {(() => {
               const detailTable = (d, color, label) => {
                 const allRows = d.flatMap(x => x.rows);
@@ -2204,28 +2052,20 @@ export default function ORSimV5() {
                             const co = carryOverIds.has(r.planId);
                             return (
                               <tr key={i} style={{ background: r.isCarryOver ? "#ff224410" : "transparent" }}>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: co?"#ff2244":"#aaa",
-                                  fontWeight: co?700:400 }}>D{r.dayIdx+1}-{r.id}</td>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: co?"#ff2244":"#555",
-                                  fontWeight: co?700:400 }}>#{r.planId??'—'}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: co?"#ff2244":"#aaa", fontWeight: co?700:400 }}>D{r.dayIdx+1}-{r.id}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: co?"#ff2244":"#555", fontWeight: co?700:400 }}>#{r.planId??'—'}</td>
                                 <td><span style={{ color: r.isCarryOver?"#ff2244":SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
                                 <td style={{ color:"#666" }}>{r.isSor ? "🚨 SOR" : r.proc}{r.isCarryOver?" ↩":""}</td>
                                 <td style={{ fontFamily:"'JetBrains Mono',monospace", color }}>{r.planned}'</td>
                                 <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.actual}'</td>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
-                                  color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>
-                                  {r.delay>0?"+":""}{r.delay}'
-                                </td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>{r.delay>0?"+":""}{r.delay}'</td>
                                 <td style={{ fontFamily:"'JetBrains Mono',monospace", color:`${color}99` }}>{minToTime(r.startPlan)}</td>
                                 <td style={{ fontFamily:"'JetBrains Mono',monospace", color:`${color}99` }}>{minToTime(r.endPlan)}</td>
                                 <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#666" }}>{minToTime(r.startReal)}</td>
-                                <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                                  color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
                                 <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, textAlign:"center" }}>
-                                  {r.isCarryOver
-                                    ? <span style={{ color:"#ff2244", fontWeight:700 }}>↩D{r.dayIdx}</span>
-                                    : co
-                                    ? <span style={{ color:"#ff9f43" }}>→D{r.dayIdx+2}</span>
+                                  {r.isCarryOver ? <span style={{ color:"#ff2244", fontWeight:700 }}>↩D{r.dayIdx}</span>
+                                    : co ? <span style={{ color:"#ff9f43" }}>→D{r.dayIdx+2}</span>
                                     : <span style={{ color:"#333" }}>—</span>}
                                 </td>
                               </tr>
@@ -2245,7 +2085,6 @@ export default function ORSimV5() {
               );
             })()}
 
-            {/* procedure summary table */}
             {(() => {
               const procSummary = (d, planSlots) => {
                 const allRows = d.flatMap(x => x.rows);
@@ -2262,7 +2101,6 @@ export default function ORSimV5() {
                     executed[r.proc] = (executed[r.proc] ?? 0) + 1;
                   }
                 });
-                // SOR counts
                 const sorExecuted = allRows.filter(r => r.isSor).length;
                 const sorCarried = d.reduce((a, x) => a + (x.sorCarryCount ?? 0), 0);
                 return { planned, executed, sorExecuted, sorCarried };
@@ -2297,15 +2135,11 @@ export default function ORSimV5() {
                           <tr key={proc}>
                             <td><span style={{ color, fontWeight:600 }}>{proc}</span></td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace", color:planColor }}>{bPlan}</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: bExec < bPlan ? "#ff9f43" : "#6bcb77", fontWeight:600 }}>{bExec}</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: bUnreal > 0 ? "#ff2244" : "#444", fontWeight: bUnreal > 0 ? 700 : 400 }}>{bUnreal}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: bExec < bPlan ? "#ff9f43" : "#6bcb77", fontWeight:600 }}>{bExec}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: bUnreal > 0 ? "#ff2244" : "#444", fontWeight: bUnreal > 0 ? 700 : 400 }}>{bUnreal}</td>
                             <td style={{ fontFamily:"'JetBrains Mono',monospace", color:robustColor }}>{rPlan}</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: rExec < rPlan ? "#ff9f43" : "#6bcb77", fontWeight:600 }}>{rExec}</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: rUnreal > 0 ? "#ff2244" : "#444", fontWeight: rUnreal > 0 ? 700 : 400 }}>{rUnreal}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: rExec < rPlan ? "#ff9f43" : "#6bcb77", fontWeight:600 }}>{rExec}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: rUnreal > 0 ? "#ff2244" : "#444", fontWeight: rUnreal > 0 ? 700 : 400 }}>{rUnreal}</td>
                           </tr>
                         );
                       })}
@@ -2326,11 +2160,9 @@ export default function ORSimV5() {
               );
             })()}
 
-            {/* free slot analysis */}
             {(() => {
               const MIN_SLOT = 55;
               const HARD_END = END + overtimeLimit;
-
               const freeSlotTable = (d, color, label) => {
                 const rows = d.map(day => {
                   const lastReal = day.rows.length > 0 ? day.rows.at(-1).endReal : START;
@@ -2339,12 +2171,10 @@ export default function ORSimV5() {
                 });
                 const greenRows = rows.filter(r => r.free >= MIN_SLOT);
                 const totalGreenMins = greenRows.reduce((a, r) => a + r.free, 0);
-
                 return (
                   <div className="card" style={{ borderTop:`2px solid ${color}` }}>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:10 }}>
-                      <div style={{ fontSize:10, letterSpacing:"0.1em", color, textTransform:"uppercase",
-                        fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                      <div style={{ fontSize:10, letterSpacing:"0.1em", color, textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
                         {label} — {lang==="pl" ? "wolne sloty" : "free slots"}
                       </div>
                       <div style={{ display:"flex", gap:16, fontSize:11, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -2354,9 +2184,7 @@ export default function ORSimV5() {
                     </div>
                     <div style={{ overflowX:"auto" }}>
                       <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
-                        <thead><tr>
-                          {["Dzień","Koniec dnia","Wolny czas","Status"].map(h => <th key={h}>{h}</th>)}
-                        </tr></thead>
+                        <thead><tr>{["Dzień","Koniec dnia","Wolny czas","Status"].map(h => <th key={h}>{h}</th>)}</tr></thead>
                         <tbody>
                           {rows.map(r => {
                             const isGreen = r.free >= MIN_SLOT;
@@ -2366,8 +2194,7 @@ export default function ORSimV5() {
                                 <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.lastEnd>END?"#ff6b6b":"#888" }}>{minToTime(r.lastEnd)}</td>
                                 <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:isGreen?700:400, color:isGreen?"#6bcb77":"#555" }}>{r.free}'</td>
                                 <td style={{ fontSize:10 }}>
-                                  {isGreen
-                                    ? <span style={{ color:"#6bcb77", fontWeight:700 }}>🟢 {lang==="pl"?"dodatkowa op.":"extra op. fits"}</span>
+                                  {isGreen ? <span style={{ color:"#6bcb77", fontWeight:700 }}>🟢 {lang==="pl"?"dodatkowa op.":"extra op. fits"}</span>
                                     : <span style={{ color:"#333" }}>—</span>}
                                 </td>
                               </tr>
@@ -2379,7 +2206,6 @@ export default function ORSimV5() {
                   </div>
                 );
               };
-
               return (
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                   {freeSlotTable(days, planColor, MODE_CONFIG[planMode].label)}
@@ -2391,7 +2217,6 @@ export default function ORSimV5() {
         );
       })()}
 
-      {/* ── OPTIMIZE tab ── */}
       {activeTab === "optimize" && (() => {
         const planColor = MODE_CONFIG[planMode].color;
         const optColor = "#6bcb77";
@@ -2418,12 +2243,10 @@ export default function ORSimV5() {
 
         return (
           <div style={{ display:"grid", gap:12 }}>
-            {/* header */}
             <div className="card" style={{ borderLeft:"3px solid #6bcb77" }}>
               <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#6bcb77", textTransform:"uppercase",
                 marginBottom:12, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
-                🔧 {lang==="pl" ? "Rolling Horizon Optimizer" : "Rolling Horizon Optimizer"}
-                {" · "}Okno = {planningWindow} {lang==="pl" ? "dni" : "days"}
+                🔧 Rolling Horizon Optimizer · Okno = {planningWindow} {lang==="pl" ? "dni" : "days"}
               </div>
               {!daysOptimized ? (
                 <div style={{ color:"#555", fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -2446,7 +2269,6 @@ export default function ORSimV5() {
               )}
             </div>
 
-            {/* comparison table */}
             {daysOptimized && baseSum && optSum && (
               <div className="card">
                 <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
@@ -2492,7 +2314,6 @@ export default function ORSimV5() {
               </div>
             )}
 
-            {/* financial summary */}
             {daysOptimized && baseSum && optSum && saved > 0 && (
               <div className="card" style={{ borderLeft:"3px solid #6bcb77" }}>
                 <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#6bcb77", textTransform:"uppercase",
@@ -2501,31 +2322,16 @@ export default function ORSimV5() {
                 </div>
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
                   <div style={{ background:"#0d0d14", borderRadius:8, padding:"14px 16px" }}>
-                    <div style={{ fontSize:24, fontWeight:700, color:"#6bcb77",
-                      fontFamily:"'JetBrains Mono',monospace" }}>
-                      {saved}
-                    </div>
-                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>
-                      {lang==="pl" ? "zaoszczędzone dni" : "days saved"}
-                    </div>
+                    <div style={{ fontSize:24, fontWeight:700, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace" }}>{saved}</div>
+                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>{lang==="pl" ? "zaoszczędzone dni" : "days saved"}</div>
                   </div>
                   <div style={{ background:"#0d0d14", borderRadius:8, padding:"14px 16px" }}>
-                    <div style={{ fontSize:24, fontWeight:700, color:"#6bcb77",
-                      fontFamily:"'JetBrains Mono',monospace" }}>
-                      {(saved * dayOperatingCost).toLocaleString()} tys.
-                    </div>
-                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>
-                      {lang==="pl" ? `oszczędność kosztu sali (${dayOperatingCost} tys./dzień)` : `OR cost savings (${dayOperatingCost}k/day)`}
-                    </div>
+                    <div style={{ fontSize:24, fontWeight:700, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace" }}>{(saved * dayOperatingCost).toLocaleString()} tys.</div>
+                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>{lang==="pl" ? `oszczędność kosztu sali (${dayOperatingCost} tys./dzień)` : `OR cost savings (${dayOperatingCost}k/day)`}</div>
                   </div>
                   <div style={{ background:"#0d0d14", borderRadius:8, padding:"14px 16px" }}>
-                    <div style={{ fontSize:24, fontWeight:700, color:"#4a9eff",
-                      fontFamily:"'JetBrains Mono',monospace" }}>
-                      {(saved * (END - START) * revenuePerMin / 1000).toFixed(0)} tys.
-                    </div>
-                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>
-                      {lang==="pl" ? `potencjał przychodu z wolnych dni (${revenuePerMin} zł/min)` : `revenue potential from freed days`}
-                    </div>
+                    <div style={{ fontSize:24, fontWeight:700, color:"#4a9eff", fontFamily:"'JetBrains Mono',monospace" }}>{(saved * (END - START) * revenuePerMin / 1000).toFixed(0)} tys.</div>
+                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>{lang==="pl" ? `potencjał przychodu z wolnych dni (${revenuePerMin} zł/min)` : `revenue potential from freed days`}</div>
                   </div>
                 </div>
                 <div style={{ marginTop:10, fontSize:10, color:"#555", fontFamily:"'JetBrains Mono',monospace" }}>
@@ -2536,7 +2342,6 @@ export default function ORSimV5() {
               </div>
             )}
 
-            {/* two gantts */}
             {daysOptimized && (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                 <div className="card" style={{ borderTop:`2px solid ${planColor}` }}>
@@ -2558,40 +2363,14 @@ export default function ORSimV5() {
         );
       })()}
 
-      {/* ── SUMMARY tab ── */}
       {activeTab === "summary" && (() => {
         if (!allStrategiesDays) return (
-          <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
-            fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
-            {lang==="pl"
-              ? "Kliknij ▶ Uruchom symulację aby zobaczyć podsumowanie wszystkich strategii"
-              : "Click ▶ Run simulation to see summary for all strategies"}
+          <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555", fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+            {lang==="pl" ? "Kliknij ▶ Uruchom symulację aby zobaczyć podsumowanie wszystkich strategii" : "Click ▶ Run simulation to see summary for all strategies"}
           </div>
         );
 
-        const calcKPI = (d, totalD) => {
-          if (!d) return null;
-          const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
-          const totalOTMin = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
-          // carry-over = ops that arrived from previous day (isCarryOver=true, not accelerated)
-          const carryOver = allR.filter(r => r.isCarryOver && !r.isAccelerated).length;
-          // accelerated = ops pulled from future days
-          const accelerated = allR.filter(r => r.isAccelerated).length;
-          const totalOps = allR.length;
-          const pctAccelerated = totalOps > 0 ? Math.round(accelerated / totalOps * 100) : 0;
-          const eff = allR.length ? ((allR.reduce((a,r)=>a+r.actual,0)+PREP*(allR.length-1))/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
-          const util = allR.length ? (allR.reduce((a,r)=>a+r.actual,0)/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
-          const otcr = allR.length ? Math.round(allR.filter(r=>r.delay<=0).length/allR.length*100) : 0;
-          const lastEnd = d.at(-1)?.lastEnd ?? END;
-          const totalActual = allR.reduce((a,r)=>a+r.actual,0);
-          const totalOTMinAll = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
-          const financial = Math.round((totalActual*revenuePerMin - totalOTMinAll*overtimeCostPerMin)/totalD);
-          const sorCount = d.reduce((a,x)=>a+(x.sorCount??0),0);
-          return { otcr, carryOver, eff, util, lastEnd,
-            overtime: lastEnd > END,
-            totalOTMin: Math.round(totalOTMinAll/totalD),
-            financial, accelerated, pctAccelerated, days: totalD, sorCount };
-        };
+        const kpiOpts = { overtimeLimit, revenuePerMin, overtimeCostPerMin, dayOperatingCost };
 
         const rhDays = allStrategiesDays.rh?.length ?? numDays;
         const savedDays = Math.max(0, numDays - rhDays);
@@ -2602,24 +2381,23 @@ export default function ORSimV5() {
           { key:"p80",    label: "P80",                           color:"#6bcb77", days: numDays },
           { key:"robust", label: `Robust Γ=${robustLevel.toFixed(1)}`, color:"#00d4ff", days: numDays },
           { key:"rh",     label: "Rolling Horizon",               color:"#a78bfa", days: rhDays },
-        ].map(s => ({ ...s, kpi: calcKPI(allStrategiesDays[s.key], s.days) }))
+        ].map(s => ({ ...s, kpi: calcKPI(allStrategiesDays[s.key], s.days, kpiOpts) }))
          .filter(s => s.kpi !== null);
 
-        // MC results merged if available
         const mcRuns = mcResults ? Object.values(mcResults)[0]?.endTimes?.length ?? 1 : 1;
 
         const kpiDefs = [
-          { key:"runs",     label: lang==="pl"?"Przebiegów":"Runs",              fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mcRuns}` : "1",   better: null, isMC: true },
-          { key:"days",     label: lang==="pl"?"Dni planu":"Plan days",          fmt: k => `${k.days}`,                                             better: "less" },
-          { key:"end",      label: lang==="pl"?"Koniec dnia":"End of day",       fmt: k => `${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}`,       better: null },
-          { key:"otcr",     label: "OTCR%",                                       fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.otcr ?? k.otcr}%` : `${k.otcr}%`, better: "more" },
-          { key:"co",       label: "Carry-over",                                  fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgCarryOver?.toFixed(1) ?? k.carryOver}` : `${k.carryOver}`, better: "less" },
-          { key:"eff",      label: lang==="pl"?"Efektywność":"Efficiency",       fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgEfficiency ?? k.eff}%` : `${k.eff}%`, better: "more" },
-          { key:"util",     label: lang==="pl"?"Wykorzystanie":"Utilization",    fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgUtilization ?? k.util}%` : `${k.util}%`, better: "more" },
-          { key:"ot",       label: lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)", fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgOvertimeMin ?? k.totalOTMin}'` : `${k.totalOTMin}'`, better: "less" },
-          { key:"accel",    label: "⏩ % "+( lang==="pl"?"przyspieszonych":"accelerated"), fmt: (k, mc, mkey) => mkey === "rh" ? `${k.pctAccelerated}%` : "0%", better: "more" },
-          { key:"fin",      label: lang==="pl"?"Wynik/dzień (zł)":"Result/day", fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${(mc[mkey]?.avgFinancial ?? k.financial).toLocaleString()}` : `${k.financial.toLocaleString()}`, better: "more" },
-          { key:"dtf",      label: lang==="pl"?"Dni do końca":"Days to finish",  fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgDaysToFinish ?? k.days}` : `${k.days}`, better: "less" },
+          { key:"runs",  label: lang==="pl"?"Przebiegów":"Runs",             fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mcRuns}` : "1", better: null, isMC: true },
+          { key:"days",  label: lang==="pl"?"Dni planu":"Plan days",         fmt: k => `${k.days}`,                                          better: "less" },
+          { key:"end",   label: lang==="pl"?"Koniec dnia":"End of day",      fmt: k => `${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}`,    better: null },
+          { key:"otcr",  label: "OTCR%",                                      fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.otcr ?? k.otcr}%` : `${k.otcr}%`, better: "more" },
+          { key:"co",    label: "Carry-over",                                 fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgCarryOver?.toFixed(1) ?? k.carryOver}` : `${k.carryOver}`, better: "less" },
+          { key:"eff",   label: lang==="pl"?"Efektywność":"Efficiency",      fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgEfficiency ?? k.eff}%` : `${k.eff}%`, better: "more" },
+          { key:"util",  label: lang==="pl"?"Wykorzystanie":"Utilization",   fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgUtilization ?? k.util}%` : `${k.util}%`, better: "more" },
+          { key:"ot",    label: lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)",fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgOvertimeMin ?? k.totalOTMin}'` : `${k.totalOTMin}'`, better: "less" },
+          { key:"accel", label: "⏩ % "+(lang==="pl"?"przyspieszonych":"accelerated"), fmt: (k, mc, mkey) => mkey === "rh" ? `${k.pctAccelerated}%` : "0%", better: "more" },
+          { key:"fin",   label: lang==="pl"?"Wynik/dzień (zł)":"Result/day", fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${(mc[mkey]?.avgFinancial ?? k.financial).toLocaleString()}` : `${k.financial.toLocaleString()}`, better: "more" },
+          { key:"dtf",   label: lang==="pl"?"Dni do końca":"Days to finish", fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgDaysToFinish ?? k.days}` : `${k.days}`, better: "less" },
         ];
 
         return (
@@ -2666,13 +2444,9 @@ export default function ORSimV5() {
                               <td key={s.key} style={{
                                 fontFamily:"'JetBrains Mono',monospace", textAlign:"center",
                                 fontWeight: isBest ? 700 : 400,
-                                color: row.isMC
-                                  ? (mcResults && s.key !== "rh" ? "#a78bfa" : "#555")
-                                  : isBest ? "#6bcb77" : s.color,
+                                color: row.isMC ? (mcResults && s.key !== "rh" ? "#a78bfa" : "#555") : isBest ? "#6bcb77" : s.color,
                                 fontSize: isBest ? 13 : 12,
-                              }}>
-                                {vals[i]}
-                              </td>
+                              }}>{vals[i]}</td>
                             );
                           })}
                         </tr>
@@ -2683,7 +2457,6 @@ export default function ORSimV5() {
               </div>
             </div>
 
-            {/* financial savings */}
             {savedDays > 0 && (
               <div className="card" style={{ borderLeft:"3px solid #a78bfa" }}>
                 <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#a78bfa", textTransform:"uppercase",
@@ -2697,24 +2470,19 @@ export default function ORSimV5() {
                     { val:`${(savedDays*(END-START)*revenuePerMin/1000).toFixed(0)} tys.`, lbl:lang==="pl"?"potencjał przychodu":"revenue potential", color:"#4a9eff" },
                   ].map(k => (
                     <div key={k.lbl} style={{ background:"#0d0d14", borderRadius:8, padding:"14px 16px" }}>
-                      <div style={{ fontSize:24, fontWeight:700, color:k.color,
-                        fontFamily:"'JetBrains Mono',monospace" }}>{k.val}</div>
+                      <div style={{ fontSize:24, fontWeight:700, color:k.color, fontFamily:"'JetBrains Mono',monospace" }}>{k.val}</div>
                       <div style={{ fontSize:10, color:"#555", marginTop:4 }}>{k.lbl}</div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
           </div>
         );
       })()}
 
-      {/* ── MONTE CARLO tab ── */}
       {activeTab === "monte" && (
         <div style={{ display:"grid", gap:14 }}>
-
-          {/* controls */}
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
               marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -2726,60 +2494,45 @@ export default function ORSimV5() {
                 <input type="range" min={100} max={1000} step={100} value={mcIterations}
                   onChange={e => setMcIterations(parseInt(e.target.value))}
                   style={{ flex:1, accentColor:"#a78bfa", cursor:"pointer" }} />
-                <span style={{ fontSize:14, fontWeight:700, color:"#a78bfa",
-                  fontFamily:"'JetBrains Mono',monospace", minWidth:40 }}>{mcIterations}</span>
+                <span style={{ fontSize:14, fontWeight:700, color:"#a78bfa", fontFamily:"'JetBrains Mono',monospace", minWidth:40 }}>{mcIterations}</span>
               </div>
               <button onClick={runMonteCarlo} disabled={mcRunning} style={{
                 padding:"10px 28px", background: mcRunning ? "#1a1a24" : "linear-gradient(135deg,#a78bfa,#7c5cdb)",
                 color: mcRunning ? "#555" : "#fff", border:"none", borderRadius:8,
-                fontSize:13, fontWeight:700, cursor: mcRunning ? "not-allowed" : "pointer",
-                fontFamily:"'Syne',sans-serif",
+                fontSize:13, fontWeight:700, cursor: mcRunning ? "not-allowed" : "pointer", fontFamily:"'Syne',sans-serif",
               }}>
                 {mcRunning ? t.monte.running : t.monte.runBtn}
               </button>
-              <span style={{ fontSize:10, color:"#333", fontFamily:"'JetBrains Mono',monospace" }}>
-                {t.monte.hint}
-              </span>
+              <span style={{ fontSize:10, color:"#333", fontFamily:"'JetBrains Mono',monospace" }}>{t.monte.hint}</span>
             </div>
-            {/* financial params */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:14,
               borderTop:"1px solid #1e1e2a", paddingTop:14 }}>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>
-                  {lang==="pl" ? "Przychód sali (zł/min):" : "Revenue (zł/min):"}
-                </span>
+                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{lang==="pl" ? "Przychód sali (zł/min):" : "Revenue (zł/min):"}</span>
                 <input type="range" min={50} max={300} step={10} value={revenuePerMin}
                   onChange={e => setRevenuePerMin(parseInt(e.target.value))}
                   style={{ flex:1, accentColor:"#6bcb77", cursor:"pointer" }} />
-                <span style={{ fontSize:13, fontWeight:700, color:"#6bcb77",
-                  fontFamily:"'JetBrains Mono',monospace", minWidth:48 }}>{revenuePerMin} zł</span>
+                <span style={{ fontSize:13, fontWeight:700, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace", minWidth:48 }}>{revenuePerMin} zł</span>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>
-                  {lang==="pl" ? "Koszt nadgodzin (zł/h):" : "Overtime cost (zł/h):"}
-                </span>
+                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{lang==="pl" ? "Koszt nadgodzin (zł/h):" : "Overtime cost (zł/h):"}</span>
                 <input type="range" min={100} max={2000} step={50} value={Math.round(overtimeCostPerMin * 60)}
                   onChange={e => setOvertimeCostPerMin(parseInt(e.target.value) / 60)}
                   style={{ flex:1, accentColor:"#ff6b6b", cursor:"pointer" }} />
-                <span style={{ fontSize:13, fontWeight:700, color:"#ff6b6b",
-                  fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{overtimeCostPerMin * 60} zł</span>
+                <span style={{ fontSize:13, fontWeight:700, color:"#ff6b6b", fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{overtimeCostPerMin * 60} zł</span>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>
-                  {lang==="pl" ? "Koszt dnia sali (tys. zł):" : "OR day cost (k zł):"}
-                </span>
+                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{lang==="pl" ? "Koszt dnia sali (tys. zł):" : "OR day cost (k zł):"}</span>
                 <input type="range" min={50} max={300} step={10} value={dayOperatingCost}
                   onChange={e => setDayOperatingCost(parseInt(e.target.value))}
                   style={{ flex:1, accentColor:"#a78bfa", cursor:"pointer" }} />
-                <span style={{ fontSize:13, fontWeight:700, color:"#a78bfa",
-                  fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{dayOperatingCost} tys.</span>
+                <span style={{ fontSize:13, fontWeight:700, color:"#a78bfa", fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{dayOperatingCost} tys.</span>
               </div>
             </div>
           </div>
 
           {mcRunning && (
-            <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
-              fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+            <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555", fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
               ⏳ {lang==="pl" ? `Liczę ${mcIterations} iteracji × 4 strategie...` : `Computing ${mcIterations} iterations × 4 strategies...`}
             </div>
           )}
@@ -2788,30 +2541,14 @@ export default function ORSimV5() {
             const modeKeys = Object.keys(mcResults);
             const COLORS = { mean:"#ff6b6b", p50:"#e07b39", p80:"#6bcb77", custom:"#a78bfa", robust:"#00d4ff" };
 
-            // build histogram data — bucket end times into 15-min bins
-            const bins = {};
-            for (let m = START; m <= END + 120; m += 15) bins[m] = { time: minToTime(m) };
-            modeKeys.forEach(mode => {
-              mcResults[mode].endTimes.forEach(et => {
-                const bucket = Math.floor(et / 15) * 15;
-                if (!bins[bucket]) bins[bucket] = { time: minToTime(bucket) };
-                bins[bucket][mode] = (bins[bucket][mode] ?? 0) + 1;
-              });
-            });
-            const histData = Object.values(bins).filter(b =>
-              modeKeys.some(m => b[m] > 0)
-            );
-
             return (
               <>
-                {/* summary table */}
                 <div className="card">
                   <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
                     marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
                     {t.monte.summaryTitle} · {mcIterations} {t.monte.iterations}
                     <span style={{ fontSize:9, color:"#555", marginLeft:8, fontFamily:"'JetBrains Mono',monospace" }}>
-                      {numDays}d · {overtimeLimit}' OT
-                      {enableSor ? ` · SOR λ=${sorLambda}` : " · SOR=0"}
+                      {numDays}d · {overtimeLimit}' OT{enableSor ? ` · SOR λ=${sorLambda}` : " · SOR=0"}
                       {enableDelay ? ` · delay P=${Math.round((1-delayOnTime)*100)}%` : " · delay=0"}
                       {" · "}Γ={robustLevel.toFixed(1)}
                     </span>
@@ -2831,52 +2568,17 @@ export default function ORSimV5() {
                         return (
                           <tr key={mode}>
                             <td><span style={{ color, fontWeight:700, fontSize:13 }}>{t.monte.modes[mode]}</span></td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
-                              color: pctOnTime>=80?"#6bcb77":pctOnTime>=50?"#e0c039":"#ff6b6b" }}>
-                              {pctOnTime}%
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: r.avgOvertimeMin>30?"#ff6b6b":r.avgOvertimeMin>0?"#ff9f43":"#6bcb77" }}>
-                              {r.avgOvertimeMin}'
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: r.avgCarryOver>1?"#ff2244":r.avgCarryOver>0?"#ff9f43":"#6bcb77" }}>
-                              {r.avgCarryOver.toFixed(1)}
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
-                              color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b",
-                              fontSize:13 }}>
-                              {r.otcr}%
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
-                              color:"#00d4ff", fontSize:13 }}>
-                              {r.avgDaysToFinish}
-                              <span style={{ fontSize:9, color:"#555", marginLeft:4 }}>
-                                ({r.minDaysToFinish}–{r.maxDaysToFinish})
-                              </span>
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>
-                              {r.totalPlanned}'
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: r.totalActual >= r.totalPlanned ? "#6bcb77" : "#ff9f43" }}>
-                              {r.totalActual}'
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: r.avgEfficiency>=85?"#6bcb77":r.avgEfficiency>=70?"#e0c039":"#ff6b6b" }}>
-                              {r.avgEfficiency}%
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                              color: r.avgUtilization>=75?"#6bcb77":r.avgUtilization>=60?"#e0c039":"#ff6b6b" }}>
-                              {r.avgUtilization}%
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700,
-                              color:"#6bcb77", fontSize:13 }}>
-                              {r.avgFinancial.toLocaleString()} zł
-                            </td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>
-                              {minToTime(r.worstEnd)}
-                            </td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color: pctOnTime>=80?"#6bcb77":pctOnTime>=50?"#e0c039":"#ff6b6b" }}>{pctOnTime}%</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.avgOvertimeMin>30?"#ff6b6b":r.avgOvertimeMin>0?"#ff9f43":"#6bcb77" }}>{r.avgOvertimeMin}'</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.avgCarryOver>1?"#ff2244":r.avgCarryOver>0?"#ff9f43":"#6bcb77" }}>{r.avgCarryOver.toFixed(1)}</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b", fontSize:13 }}>{r.otcr}%</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:"#00d4ff", fontSize:13 }}>{r.avgDaysToFinish}<span style={{ fontSize:9, color:"#555", marginLeft:4 }}>({r.minDaysToFinish}–{r.maxDaysToFinish})</span></td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.totalPlanned}'</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.totalActual >= r.totalPlanned ? "#6bcb77" : "#ff9f43" }}>{r.totalActual}'</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.avgEfficiency>=85?"#6bcb77":r.avgEfficiency>=70?"#e0c039":"#ff6b6b" }}>{r.avgEfficiency}%</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.avgUtilization>=75?"#6bcb77":r.avgUtilization>=60?"#e0c039":"#ff6b6b" }}>{r.avgUtilization}%</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:"#6bcb77", fontSize:13 }}>{r.avgFinancial.toLocaleString()} zł</td>
+                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{minToTime(r.worstEnd)}</td>
                           </tr>
                         );
                       })}
@@ -2884,7 +2586,6 @@ export default function ORSimV5() {
                   </table>
                 </div>
 
-                {/* diagnostic message */}
                 {(() => {
                   const modeVals = modeKeys.map(m => mcResults[m].overtimeRate);
                   const minOT = Math.min(...modeVals);
@@ -2893,44 +2594,29 @@ export default function ORSimV5() {
                   const allHigh = modeVals.every(v => v > 70);
                   const allLow  = modeVals.every(v => v < 10);
                   if (allHigh) return (
-                    <div style={{ background:"#ff224410", border:"1px solid #ff224433", borderRadius:8,
-                      padding:"12px 16px", fontSize:11, color:"#ff9f43",
-                      fontFamily:"'JetBrains Mono',monospace" }}>
-                      ⚠ {lang==="pl"
-                        ? "Plan jest zbyt ciasny — wszystkie strategie regularnie przepełniają salę. Zmniejsz liczbę operacji lub zwiększ limit nadgodzin aby zobaczyć różnicę między strategiami."
-                        : "Plan is too tight — all strategies regularly overflow. Reduce the number of operations or increase the overtime limit to see differences between strategies."}
+                    <div style={{ background:"#ff224410", border:"1px solid #ff224433", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#ff9f43", fontFamily:"'JetBrains Mono',monospace" }}>
+                      ⚠ {lang==="pl" ? "Plan jest zbyt ciasny — wszystkie strategie regularnie przepełniają salę. Zmniejsz liczbę operacji lub zwiększ limit nadgodzin aby zobaczyć różnicę między strategiami." : "Plan is too tight — all strategies regularly overflow. Reduce the number of operations or increase the overtime limit to see differences between strategies."}
                     </div>
                   );
                   if (allLow && diff < 5) return (
-                    <div style={{ background:"#6bcb7710", border:"1px solid #6bcb7733", borderRadius:8,
-                      padding:"12px 16px", fontSize:11, color:"#6bcb77",
-                      fontFamily:"'JetBrains Mono',monospace" }}>
-                      ✓ {lang==="pl"
-                        ? "Plan ma duży zapas — wszystkie strategie mieszczą się w dniu. Zwiększ liczbę operacji aby zobaczyć różnicę między strategiami."
-                        : "Plan has a large margin — all strategies fit within the day. Increase operations to see differences between strategies."}
+                    <div style={{ background:"#6bcb7710", border:"1px solid #6bcb7733", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace" }}>
+                      ✓ {lang==="pl" ? "Plan ma duży zapas — wszystkie strategie mieszczą się w dniu. Zwiększ liczbę operacji aby zobaczyć różnicę między strategiami." : "Plan has a large margin — all strategies fit within the day. Increase operations to see differences between strategies."}
                     </div>
                   );
                   if (diff < 5) return (
-                    <div style={{ background:"#e0c03910", border:"1px solid #e0c03933", borderRadius:8,
-                      padding:"12px 16px", fontSize:11, color:"#e0c039",
-                      fontFamily:"'JetBrains Mono',monospace" }}>
-                      ℹ {lang==="pl"
-                        ? `Różnica między strategiami wynosi tylko ${diff}%. Spróbuj zwiększyć liczbę operacji lub zmienić parametry rozkładu aby uzyskać wyraźniejszy efekt.`
-                        : `Difference between strategies is only ${diff}%. Try increasing operations or changing distribution parameters for a clearer effect.`}
+                    <div style={{ background:"#e0c03910", border:"1px solid #e0c03933", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#e0c039", fontFamily:"'JetBrains Mono',monospace" }}>
+                      ℹ {lang==="pl" ? `Różnica między strategiami wynosi tylko ${diff}%. Spróbuj zwiększyć liczbę operacji lub zmienić parametry rozkładu aby uzyskać wyraźniejszy efekt.` : `Difference between strategies is only ${diff}%. Try increasing operations or changing distribution parameters for a clearer effect.`}
                     </div>
                   );
                   return null;
                 })()}
+
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12 }}>
                   {modeKeys.map(mode => {
                     const color = COLORS[mode];
                     const r = mcResults[mode];
-
-                    // build per-mode histogram bins
                     const modeBins = {};
-                    for (let m = START; m <= END + 120; m += 15) {
-                      modeBins[m] = { time: minToTime(m), count: 0 };
-                    }
+                    for (let m = START; m <= END + 120; m += 15) modeBins[m] = { time: minToTime(m), count: 0 };
                     r.endTimes.forEach(et => {
                       const bucket = Math.floor(et / 15) * 15;
                       if (!modeBins[bucket]) modeBins[bucket] = { time: minToTime(bucket), count: 0 };
@@ -2939,15 +2625,11 @@ export default function ORSimV5() {
                     const modeHistData = Object.values(modeBins).filter(b => b.count > 0);
                     const onTime = r.endTimes.filter(e => e <= END).length;
                     const pctOnTime = Math.round(onTime / r.endTimes.length * 100);
-
                     return (
                       <div key={mode} className="card" style={{ borderTop:`2px solid ${color}` }}>
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
                           <span style={{ fontSize:13, fontWeight:700, color }}>{t.monte.modes[mode]}</span>
-                          <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
-                            color: pctOnTime >= 80 ? "#6bcb77" : pctOnTime >= 50 ? "#e0c039" : "#ff6b6b" }}>
-                            {pctOnTime}% {lang==="pl" ? "na czas" : "on time"}
-                          </span>
+                          <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", color: pctOnTime >= 80 ? "#6bcb77" : pctOnTime >= 50 ? "#e0c039" : "#ff6b6b" }}>{pctOnTime}% {lang==="pl" ? "na czas" : "on time"}</span>
                         </div>
                         <ResponsiveContainer width="100%" height={160}>
                           <BarChart data={modeHistData} margin={{ top:4, right:4, bottom:16, left:-15 }}>
@@ -2962,51 +2644,21 @@ export default function ORSimV5() {
                           </BarChart>
                         </ResponsiveContainer>
                         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginTop:8 }}>
-                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
-                            <div style={{ fontSize:16, fontWeight:600, color:"#4a9eff",
-                              fontFamily:"'JetBrains Mono',monospace" }}>{r.avgOpsMin}'</div>
-                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
-                              {lang==="pl" ? "min op./dzień" : "op. min/day"}
+                          {[
+                            { val:`${r.avgOpsMin}'`, lbl:lang==="pl"?"min op./dzień":"op. min/day", color:"#4a9eff" },
+                            { val:minToTime(r.avgEnd), lbl:lang==="pl"?"śr. koniec":"avg end", color },
+                            { val:`${r.avgOvertimeMin}'`, lbl:lang==="pl"?"śr. nadgodziny":"avg overtime", color: r.avgOvertimeMin > 0 ? "#ff9f43" : "#6bcb77" },
+                            { val:r.avgCarryOver.toFixed(1), lbl:lang==="pl"?"śr. carry-over/dzień":"avg carry-over/day", color: r.avgCarryOver > 0 ? "#ff2244" : "#6bcb77" },
+                            { val:`${r.otcr}%`, lbl:"OTCR", color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b", bold:true },
+                          ].map(k => (
+                            <div key={k.lbl} style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
+                              <div style={{ fontSize:16, fontWeight: k.bold ? 700 : 600, color:k.color, fontFamily:"'JetBrains Mono',monospace" }}>{k.val}</div>
+                              <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{k.lbl}</div>
                             </div>
-                          </div>
-                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
-                            <div style={{ fontSize:16, fontWeight:600, color,
-                              fontFamily:"'JetBrains Mono',monospace" }}>{minToTime(r.avgEnd)}</div>
-                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
-                              {lang==="pl" ? "śr. koniec" : "avg end"}
-                            </div>
-                          </div>
-                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
-                            <div style={{ fontSize:16, fontWeight:600,
-                              color: r.avgOvertimeMin > 0 ? "#ff9f43" : "#6bcb77",
-                              fontFamily:"'JetBrains Mono',monospace" }}>{r.avgOvertimeMin}'</div>
-                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
-                              {lang==="pl" ? "śr. nadgodziny" : "avg overtime"}
-                            </div>
-                          </div>
-                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
-                            <div style={{ fontSize:16, fontWeight:600,
-                              color: r.avgCarryOver > 0 ? "#ff2244" : "#6bcb77",
-                              fontFamily:"'JetBrains Mono',monospace" }}>{r.avgCarryOver.toFixed(1)}</div>
-                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
-                              {lang==="pl" ? "śr. carry-over/dzień" : "avg carry-over/day"}
-                            </div>
-                          </div>
-                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
-                            <div style={{ fontSize:16, fontWeight:700,
-                              color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b",
-                              fontFamily:"'JetBrains Mono',monospace" }}>{r.otcr}%</div>
-                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>OTCR</div>
-                          </div>
-                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px",
-                            gridColumn:"1/-1" }}>
-                            <div style={{ fontSize:16, fontWeight:700, color:"#6bcb77",
-                              fontFamily:"'JetBrains Mono',monospace" }}>
-                              {r.avgFinancial.toLocaleString()} zł
-                            </div>
-                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>
-                              {lang==="pl" ? "śr. wynik/dzień" : "avg result/day"}
-                            </div>
+                          ))}
+                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px", gridColumn:"1/-1" }}>
+                            <div style={{ fontSize:16, fontWeight:700, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace" }}>{r.avgFinancial.toLocaleString()} zł</div>
+                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{lang==="pl" ? "śr. wynik/dzień" : "avg result/day"}</div>
                           </div>
                         </div>
                       </div>
@@ -3018,17 +2670,13 @@ export default function ORSimV5() {
           })()}
 
           {!mcResults && !mcRunning && (
-            <div className="card" style={{ textAlign:"center", padding:"32px", color:"#333",
-              fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
-              {lang==="pl"
-                ? `Kliknij "▶ Uruchom analizę" aby porównać 4 strategie planowania na ${mcIterations} losowych realizacjach`
-                : `Click "▶ Run analysis" to compare 4 planning strategies across ${mcIterations} random realizations`}
+            <div className="card" style={{ textAlign:"center", padding:"32px", color:"#333", fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+              {lang==="pl" ? `Kliknij "▶ Uruchom analizę" aby porównać 4 strategie planowania na ${mcIterations} losowych realizacjach` : `Click "▶ Run analysis" to compare 4 planning strategies across ${mcIterations} random realizations`}
             </div>
           )}
         </div>
       )}
 
-      {/* ── TEST tab ── */}
       {activeTab === "test" && (() => {
         const planColor = MODE_CONFIG[planMode].color;
         const optDays = daysOptimized ? daysOptimized.length : numDays;
@@ -3045,58 +2693,34 @@ export default function ORSimV5() {
         const active = STRATS.find(s => s.key === selectedStrat) ?? STRATS[3];
 
         if (!allStrategiesDays) return (
-          <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
-            fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+          <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555", fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
             {lang==="pl" ? "Kliknij ▶ Uruchom symulację" : "Click ▶ Run simulation"}
           </div>
         );
 
-        const calcKPI = (d, totalD) => {
-          if (!d) return null;
-          const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
-          const totalOTMinAll = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
-          const carryOver = allR.filter(r => r.isCarryOver && !r.isAccelerated).length;
-          const accelerated = allR.filter(r => r.isAccelerated).length;
-          const pctAccelerated = allR.length > 0 ? Math.round(accelerated / allR.length * 100) : 0;
-          const eff = allR.length ? ((allR.reduce((a,r)=>a+r.actual,0)+PREP*(allR.length-1))/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
-          const util = allR.length ? (allR.reduce((a,r)=>a+r.actual,0)/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
-          const otcr = allR.length ? Math.round(allR.filter(r=>r.delay<=0).length/allR.length*100) : 0;
-          const lastEnd = d.at(-1)?.lastEnd ?? END;
-          const totalActual = allR.reduce((a,r)=>a+r.actual,0);
-          const revenueTotal = Math.round(totalActual * revenuePerMin);
-          const otCostTotal = Math.round(totalOTMinAll * overtimeCostPerMin);
-          const saleSavingTotal = saved * dayOperatingCost * 1000;
-          const totalResult = revenueTotal - otCostTotal + saleSavingTotal;
-          const financial = Math.round(totalResult / totalD);
-          return { otcr, carryOver, eff, util, lastEnd, overtime: lastEnd > END,
-            totalOTMin: Math.round(totalOTMinAll/totalD), financial,
-            revenueTotal, otCostTotal, saleSavingTotal, totalResult,
-            pctAccelerated, days: totalD };
-        };
+        const kpiOpts = { overtimeLimit, revenuePerMin, overtimeCostPerMin, dayOperatingCost, saved };
 
-        const kpiData = STRATS.map(s => ({ ...s, kpi: calcKPI(s.days, s.key === "rh" ? optDays : numDays) }));
+        const kpiData = STRATS.map(s => ({ ...s, kpi: calcKPI(s.days, s.key === "rh" ? optDays : numDays, kpiOpts) }));
 
         const kpiRows = [
           { label:lang==="pl"?"Przebiegów":"Runs",           fmt: ()=>"1" },
-          { label:lang==="pl"?"Dni planu":"Plan days",        fmt: k=>`${k.days}`,                                         better:"less",  highlight:true },
-          { label:lang==="pl"?"Koniec dnia":"End of day",     fmt: k=>`${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}` },
-          { label:"OTCR%",                                    fmt: k=>`${k.otcr}%`,                                        better:"more" },
-          { label:"Carry-over",                               fmt: k=>`${k.carryOver}`,                                    better:"less" },
-          { label:lang==="pl"?"Efektywność":"Efficiency",     fmt: k=>`${k.eff}%`,                                         better:"more" },
-          { label:lang==="pl"?"Wykorzystanie":"Utilization",  fmt: k=>`${k.util}%`,                                        better:"more" },
-          { label:lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)",fmt: k=>`${k.totalOTMin}'`,                                  better:"less" },
-          { label:lang==="pl"?"⏩ % przysp.":"⏩ % accel.",              fmt: (k,key)=> key==="rh"?`${k.pctAccelerated}%`:"0%", better:"more" },
-          { label:lang==="pl"?"1. Przychód (zł)":"1. Revenue (zł)",       fmt: k=>`${k.revenueTotal.toLocaleString()}`,           better:"more" },
-          { label:lang==="pl"?"2. -Koszt OT (zł)":"2. -OT cost (zł)",     fmt: k=>`-${k.otCostTotal.toLocaleString()}`,           better:"less" },
-          { label:lang==="pl"?"3. Oszczędność sali":"3. OR savings",       fmt: (k,key)=> key==="rh" && saved>0 ? `+${k.saleSavingTotal.toLocaleString()}` : "—", better:"more" },
-          { label:lang==="pl"?"4. Wynik łącznie":"4. Total result",        fmt: k=>`${k.totalResult.toLocaleString()} zł`,         better:"more", highlight2:true },
-          { label:lang==="pl"?`5. Wynik/dzień (÷dni)`:`5. Result/day (÷days)`, fmt: k=>`${k.financial.toLocaleString()} zł`,     better:"more" },
+          { label:lang==="pl"?"Dni planu":"Plan days",        fmt: k=>`${k?.days ?? "—"}`,                                better:"less", highlight:true },
+          { label:lang==="pl"?"Koniec dnia":"End of day",     fmt: k=> k ? `${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}` : "—" },
+          { label:"OTCR%",                                    fmt: k=>`${k?.otcr ?? "—"}%`,                               better:"more" },
+          { label:"Carry-over",                               fmt: k=>`${k?.carryOver ?? "—"}`,                           better:"less" },
+          { label:lang==="pl"?"Efektywność":"Efficiency",     fmt: k=>`${k?.eff ?? "—"}%`,                                better:"more" },
+          { label:lang==="pl"?"Wykorzystanie":"Utilization",  fmt: k=>`${k?.util ?? "—"}%`,                               better:"more" },
+          { label:lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)",fmt: k=>`${k?.totalOTMin ?? "—"}'`,                         better:"less" },
+          { label:lang==="pl"?"⏩ % przysp.":"⏩ % accel.",   fmt: (k,key)=> k ? (key==="rh"?`${k.pctAccelerated}%`:"0%") : "—", better:"more" },
+          { label:lang==="pl"?"1. Przychód (zł)":"1. Revenue (zł)",    fmt: k=>`${k?.revenueTotal?.toLocaleString() ?? "—"}`,    better:"more" },
+          { label:lang==="pl"?"2. -Koszt OT (zł)":"2. -OT cost (zł)", fmt: k=>`-${k?.otCostTotal?.toLocaleString() ?? "—"}`,    better:"less" },
+          { label:lang==="pl"?"3. Oszczędność sali":"3. OR savings",   fmt: (k,key)=> k && key==="rh" && saved>0 ? `+${k.saleSavingTotal.toLocaleString()}` : "—", better:"more" },
+          { label:lang==="pl"?"4. Wynik łącznie":"4. Total result",    fmt: k=>`${k?.totalResult?.toLocaleString() ?? "—"} zł`,  better:"more", highlight2:true },
+          { label:lang==="pl"?`5. Wynik/dzień (÷dni)`:`5. Result/day (÷days)`, fmt: k=>`${k?.financial?.toLocaleString() ?? "—"} zł`, better:"more" },
         ];
 
         return (
           <div style={{ display:"grid", gap:12 }}>
-
-            {/* tabela podsumowania */}
             <div className="card">
               <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
                 marginBottom:8, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -3133,12 +2757,11 @@ export default function ORSimV5() {
                               ? (isRH && hasSaving ? "#6bcb77" : hasSaving ? "#ff6b6b" : s.color)
                               : isFinRow ? (isBest ? "#6bcb77" : s.color)
                               : isBest ? "#6bcb77" : s.color;
-                            const cellSize = isDaysRow ? 16 : (isFinRow || isBest) ? 13 : 12;
-                            const cellWeight = isDaysRow || isFinRow || isBest ? 700 : 400;
                             return (
                               <td key={s.key} style={{
                                 fontFamily:"'JetBrains Mono',monospace", textAlign:"center",
-                                fontWeight: cellWeight, fontSize: cellSize,
+                                fontWeight: isDaysRow || isFinRow || isBest ? 700 : 400,
+                                fontSize: isDaysRow ? 16 : (isFinRow || isBest) ? 13 : 12,
                                 color: cellColor,
                                 background: isDaysRow ? (isRH && hasSaving ? "#6bcb7712" : hasSaving ? "#ff6b6b12" : "transparent")
                                   : isFinRow ? "#ffffff08" : "transparent",
@@ -3155,7 +2778,6 @@ export default function ORSimV5() {
               </div>
             </div>
 
-            {/* przełącznik */}
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               {STRATS.map(s => (
                 <button key={s.key} onClick={() => setSelectedStrat(s.key)} style={{
@@ -3168,7 +2790,6 @@ export default function ORSimV5() {
               ))}
             </div>
 
-            {/* 2 Gantty */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
               <div className="card" style={{ borderTop:`2px solid ${planColor}` }}>
                 <div style={{ fontSize:11, fontWeight:700, color:planColor, marginBottom:8 }}>
