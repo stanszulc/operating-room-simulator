@@ -1768,48 +1768,8 @@ export default function ORSimV5() {
             customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color} numDays={numDays}
             robustLevel={robustLevel} slotsRobust={slotsRobust} />
 
-          {/* disruption toggles */}
-          <div style={{ marginTop:16, borderTop:"1px solid #1e1e2a", paddingTop:16 }}>
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-              fontFamily:"'JetBrains Mono',monospace", marginBottom:12 }}>
-              ⚡ {t.schedule.disruptions}
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-              {[
-                { key:"delay", enabled:enableDelay, setter:setEnableDelay, label:t.schedule.enableDelay, color:"#ff9f43" },
-                { key:"sor",   enabled:enableSor,   setter:setEnableSor,   label:t.schedule.enableSor,   color:"#ff2244" },
-              ].map(({ key, enabled, setter, label, color }) => (
-                <div key={key} onClick={() => setter(v => !v)} style={{
-                  display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
-                  background: enabled ? `${color}14` : "#111118",
-                  border:`1px solid ${enabled ? color+"66" : "#1e1e2a"}`,
-                  borderRadius:8, cursor:"pointer", transition:"all 0.15s",
-                }}>
-                  <div style={{
-                    width:18, height:18, borderRadius:4, flexShrink:0,
-                    background: enabled ? color : "transparent",
-                    border:`2px solid ${enabled ? color : "#333"}`,
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                  }}>
-                    {enabled && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
-                  </div>
-                  <span style={{ fontSize:12, color: enabled ? color : "#555", fontWeight: enabled ? 600 : 400 }}>
-                    {label}
-                  </span>
-                  {enabled && (
-                    <span style={{ marginLeft:"auto", fontSize:10, color:`${color}99`,
-                      fontFamily:"'JetBrains Mono',monospace" }}>
-                      {key === "delay" ? `P=${Math.round(delayOnTime*100)}% · ${delayMean}'` : `λ=${sorLambda} · ${sorDuration}'`}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-            {(enableDelay || enableSor) && (
-              <div style={{ marginTop:8, fontSize:10, color:"#555", fontFamily:"'JetBrains Mono',monospace" }}>
-                ↳ {lang === "pl" ? "Ustaw parametry w zakładce 3" : "Configure parameters in tab 3"}
-              </div>
-            )}
+          <div style={{ marginTop:10, fontSize:11, color:"#555", fontFamily:"'JetBrains Mono',monospace" }}>
+            ↳ {lang==="pl" ? "Parametry symulacji w zakładce Ustawienia" : "Simulation parameters in Settings tab"}
           </div>
         </div>
       )}
@@ -1817,192 +1777,201 @@ export default function ORSimV5() {
       {/* ── SETTINGS tab ── */}
       {activeTab === "settings" && (
         <div style={{ display:"grid", gap:14 }}>
+
+          {/* SEKCJA: Harmonogram */}
           <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>{t.planning.modeTitle}</div>
-            <div style={{ display:"flex", gap:10, marginBottom:16 }}>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+              marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
+              📅 {lang==="pl" ? "Harmonogram" : "Schedule"}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                  <span style={{ fontSize:11, color:"#888" }}>{t.daysLabel}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:"#e07b39", fontFamily:"'JetBrains Mono',monospace" }}>{numDays}</span>
+                </div>
+                <input type="range" min={1} max={30} step={1} value={numDays}
+                  onChange={e => setNumDays(parseInt(e.target.value))}
+                  style={{ width:"100%", accentColor:"#e07b39", cursor:"pointer" }} />
+              </div>
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                  <span style={{ fontSize:11, color:"#888" }}>{t.overtimeLabel}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:"#ff6b6b", fontFamily:"'JetBrains Mono',monospace" }}>{overtimeLimit}'</span>
+                </div>
+                <input type="range" min={0} max={120} step={15} value={overtimeLimit}
+                  onChange={e => setOvertimeLimit(parseInt(e.target.value))}
+                  style={{ width:"100%", accentColor:"#ff6b6b", cursor:"pointer" }} />
+              </div>
+            </div>
+          </div>
+
+          {/* SEKCJA: Tryb planu + Robust */}
+          <div className="card">
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+              marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
+              🎯 {lang==="pl" ? "Strategia planowania" : "Planning strategy"}
+            </div>
+            <div style={{ display:"flex", gap:8, marginBottom:16 }}>
               {Object.entries(MODE_CONFIG).filter(([m]) => m !== "robust").map(([mode, cfg]) => (
-                <ModeBtn key={mode} mode={mode} active={planMode===mode} onClick={handleModeChange} label={cfg.label} desc={cfg.desc} color={cfg.color} />
+                <ModeBtn key={mode} mode={mode} active={planMode===mode} onClick={handleModeChange}
+                  label={cfg.label} desc={cfg.desc} color={cfg.color} />
               ))}
             </div>
-            {/* robust level slider — now Gamma */}
-            <div style={{ background:"#0d0d1a", borderRadius:8, padding:"12px 16px", marginBottom:12,
-              border:"1px solid #00d4ff33" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <span style={{ fontSize:11, color:"#00d4ff", fontWeight:600, whiteSpace:"nowrap" }}>
-                  🛡 Γ (Gamma):
-                </span>
-                <input type="range" min={0.5} max={slots.filter(s=>s.proc).length || 6} step={0.5}
-                  value={robustLevel}
-                  onChange={e => setRobustLevel(parseFloat(e.target.value))}
-                  style={{ flex:1, accentColor:"#00d4ff", cursor:"pointer" }} />
-                <span style={{ fontSize:14, fontWeight:700, color:"#00d4ff",
-                  fontFamily:"'JetBrains Mono',monospace", minWidth:32 }}>
-                  {robustLevel.toFixed(1)}
-                </span>
-              </div>
-              <div style={{ fontSize:10, color:"#555", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
-                {lang==="pl"
-                  ? `Chronisz ${robustLevel.toFixed(1)} operacji — bufor rozdzielany wg zmienności (σ)`
-                  : `Protecting ${robustLevel.toFixed(1)} operations — buffer allocated by variability (σ)`}
-              </div>
-              {/* planning window slider */}
-              <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:10, paddingTop:10,
-                borderTop:"1px solid #00d4ff22" }}>
-                <span style={{ fontSize:11, color:"#00d4ff", fontWeight:600, whiteSpace:"nowrap" }}>
-                  📅 {lang==="pl" ? "Okno planowania:" : "Planning window:"}
-                </span>
-                <input type="range" min={1} max={5} step={1} value={planningWindow}
-                  onChange={e => setPlanningWindow(parseInt(e.target.value))}
-                  style={{ flex:1, accentColor:"#00d4ff", cursor:"pointer" }} />
-                <span style={{ fontSize:14, fontWeight:700, color:"#00d4ff",
-                  fontFamily:"'JetBrains Mono',monospace", minWidth:48 }}>
-                  {planningWindow} {lang==="pl" ? "dni" : "days"}
-                </span>
-              </div>
-              <div style={{ fontSize:10, color:"#555", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
-                {lang==="pl"
-                  ? `Optymalizator może pożyczyć operację z max ${planningWindow} dni do przodu`
-                  : `Optimizer can borrow an op from up to ${planningWindow} days ahead`}
-              </div>
-              {/* robust plan preview table */}
-              {slots.filter(s=>s.proc).length > 0 && (() => {
-                const validPlan = slots.filter(s => s.proc !== null);
-                const robustMap = buildRobustPlan(validPlan, matrix, procParams, robustLevel);
-                return (
-                  <div style={{ marginTop:12, overflowX:"auto" }}>
-                    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:10 }}>
-                      <thead><tr>
-                        <th style={{ color:"#444", fontSize:9 }}>{lang==="pl"?"#":"#"}</th>
-                        <th style={{ color:"#444", fontSize:9 }}>{lang==="pl"?"Procedura":"Procedure"}</th>
-                        <th style={{ color:"#444", fontSize:9 }}>{lang==="pl"?"Chir.":"Surg."}</th>
-                        <th style={{ color:"#e07b39", fontSize:9 }}>P50</th>
-                        <th style={{ color:"#ff9f43", fontSize:9 }}>σ</th>
-                        <th style={{ color:"#00d4ff", fontSize:9 }}>Bufor</th>
-                        <th style={{ color:"#00d4ff", fontSize:9, fontWeight:700 }}>Robust</th>
-                      </tr></thead>
-                      <tbody>
-                        {validPlan.map((op, i) => {
-                          const key = `${op.proc}__${op.chir}`;
-                          const cell = matrix[op.proc]?.[op.chir];
-                          const { sigma, mu } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
-                          const p50 = cell?.p50 ?? Math.round(lognormP50(mu, sigma));
-                          const robust = robustMap[key] ?? p50;
-                          const buffer = robust - p50;
-                          return (
-                            <tr key={i}>
-                              <td style={{ color:"#444", fontFamily:"'JetBrains Mono',monospace" }}>{i+1}</td>
-                              <td style={{ color:"#666" }}>{op.proc}</td>
-                              <td style={{ color:SURGEON_COLORS[op.chir], fontWeight:600 }}>{op.chir}</td>
-                              <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{p50}'</td>
-                              <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43" }}>{sigma.toFixed(2)}</td>
-                              <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                                color: buffer > 0 ? "#00d4ff" : "#333" }}>
-                                {buffer > 0 ? `+${buffer}'` : "0'"}
-                              </td>
-                              <td style={{ fontFamily:"'JetBrains Mono',monospace",
-                                color:"#00d4ff", fontWeight:700 }}>{robust}'</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
-            </div>
-            <div style={{ background:"#0d0d14", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#555", lineHeight:1.7 }}>
-              <strong style={{ color:"#777" }}>{t.planning.explainTitle}</strong><br/>
-              {t.planning.explainBody}<span style={{ color:"#ff6b6b" }}>{t.planning.explainHighlight}</span>{t.planning.explainSuffix}
-            </div>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
-            {Object.entries(DEFAULT_PROC_PARAMS).map(([proc, { mu, sigma }]) => {
-              const color = PROC_COLORS[proc];
-              const cell = matrix[proc]?.C ?? {};
-              const mean = cell.mean ?? Math.round(lognormMean(mu, sigma));
-              const p50  = cell.p50  ?? Math.round(lognormP50(mu, sigma));
-              const p80  = cell.p80  ?? Math.round(lognormP80(mu, sigma));
-              const offset = customOffsets[proc] ?? 0;
-              const { curve } = buildPDFCurve(mu, sigma);
-              const meanVal = Math.round(lognormMean(mu, sigma));
-              const medVal  = Math.round(lognormP50(mu, sigma));
-              const p80Val  = Math.round(lognormP80(mu, sigma));
-              return (
-                <div key={proc} className="card" style={{ borderTop:`2px solid ${color}` }}>
-                  <div style={{ fontSize:13, fontWeight:600, color, marginBottom:12 }}>{proc}</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginBottom:14 }}>
-                    {[
-                      { key:"mean", label:"Mean",   val:`${mean}'`, color:"#ff6b6b", note:t.planning.badges.mean },
-                      { key:"p50",  label:"P50",    val:`${p50}'`,  color:"#e07b39", note:t.planning.badges.p50 },
-                      { key:"p80",  label:"P80",    val:`${p80}'`,  color:"#6bcb77", note:t.planning.badges.p80 },
-                    ].map(b => (
-                      <div key={b.key} style={{ background:"#0d0d14", borderRadius:6, padding:"8px 10px", border:`1px solid ${planMode===b.key?b.color+"66":"#1e1e2a"}` }}>
-                        <div style={{ fontSize:16, fontWeight:600, color:b.color, fontFamily:"'JetBrains Mono',monospace" }}>{b.val}</div>
-                        <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{b.label}</div>
-                        <div style={{ fontSize:9, color:b.color+"99" }}>{b.note}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <ResponsiveContainer width="100%" height={90}>
-                    <AreaChart data={curve} margin={{ top:8, right:4, bottom:0, left:-28 }}>
-                      <defs>
-                        <linearGradient id={`pg-${proc.replace(/\s/g,"")}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%"  stopColor={color} stopOpacity={0.3} />
-                          <stop offset="95%" stopColor={color} stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1a1a26" vertical={false} />
-                      <XAxis dataKey="x" tick={{ fontSize:9, fill:"#555" }} tickFormatter={v=>`${v}'`} interval="preserveStartEnd" />
-                      <YAxis hide />
-                      <ReferenceLine x={meanVal} stroke="#ff6b6b" strokeWidth={2} strokeDasharray="3 2" label={{ value:`ś=${meanVal}'`, position:"top", fill:"#ff6b6b", fontSize:8 }} />
-                      <ReferenceLine x={medVal}  stroke="#e07b39" strokeWidth={2} strokeDasharray="5 2" label={{ value:`P50=${medVal}'`, position:"top", fill:"#e07b39", fontSize:8 }} />
-                      <ReferenceLine x={p80Val}  stroke="#6bcb77" strokeWidth={1} strokeDasharray="2 3" label={{ value:`P80=${p80Val}'`, position:"top", fill:"#6bcb77", fontSize:8 }} />
-                      <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }} formatter={(v,n,p)=>[`${p.payload.x} min`,""]} labelFormatter={()=>""} />
-                      <Area type="monotone" dataKey="y" stroke={color} strokeWidth={2} fill={`url(#pg-${proc.replace(/\s/g,"")})`} dot={false} activeDot={{ r:3, fill:color }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                  {planMode === "custom" && (
-                    <div style={{ marginTop:12, padding:"10px 12px", background:"#0d0d14", borderRadius:6 }}>
-                      <Slider label={t.planning.offsetLabel} value={offset} min={-20} max={30} step={5}
-                        onChange={v => { setOffset(proc, v); const vp=slots.filter(s=>s.proc!==null); setDualDays(simulateDual(vp,procParams,matrix,"custom",{...customOffsets,[proc]:v},robustLevel,numDays,overtimeLimit,disruptions)); }}
-                        color={color} />
-                      <div style={{ fontSize:10, color:"#555", marginTop:2 }}>{t.planning.offsetBase} ({p50}') + {offset} = <span style={{ color, fontWeight:600 }}>{p50+offset}'</span></div>
-                    </div>
-                  )}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16,
+              background:"#0d0d1a", borderRadius:8, padding:"12px 16px", border:"1px solid #00d4ff33" }}>
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                  <span style={{ fontSize:11, color:"#00d4ff" }}>🛡 Γ (Gamma)</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:"#00d4ff", fontFamily:"'JetBrains Mono',monospace" }}>{robustLevel.toFixed(1)}</span>
                 </div>
-              );
-            })}
+                <input type="range" min={0.5} max={slots.filter(s=>s.proc).length || 6} step={0.5}
+                  value={robustLevel} onChange={e => setRobustLevel(parseFloat(e.target.value))}
+                  style={{ width:"100%", accentColor:"#00d4ff", cursor:"pointer" }} />
+                <div style={{ fontSize:10, color:"#555", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
+                  {lang==="pl" ? `Chronisz ${robustLevel.toFixed(1)} ops od opóźnienia` : `Protecting ${robustLevel.toFixed(1)} ops from delay`}
+                </div>
+              </div>
+              <div>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                  <span style={{ fontSize:11, color:"#00d4ff" }}>📅 {lang==="pl" ? "Okno planowania" : "Planning window"}</span>
+                  <span style={{ fontSize:13, fontWeight:700, color:"#00d4ff", fontFamily:"'JetBrains Mono',monospace" }}>{planningWindow} {lang==="pl"?"dni":"days"}</span>
+                </div>
+                <input type="range" min={1} max={7} step={1} value={planningWindow}
+                  onChange={e => setPlanningWindow(parseInt(e.target.value))}
+                  style={{ width:"100%", accentColor:"#00d4ff", cursor:"pointer" }} />
+                <div style={{ fontSize:10, color:"#555", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
+                  {lang==="pl" ? `RH pożycza ops z max ${planningWindow} dni do przodu` : `RH borrows ops up to ${planningWindow} days ahead`}
+                </div>
+              </div>
+            </div>
           </div>
+
+          {/* SEKCJA: Zakłócenia */}
           <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>{t.planning.diffTitle}</div>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead><tr>
-                {[...t.planning.diffHeaders, `Robust Γ=${robustLevel.toFixed(1)}`].map(h=><th key={h}>{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {matrixRows.map((r,i) => {
-                  const robustMap = buildRobustPlan(
-                    [{ proc: r.proc, chir: r.surg }], matrix, procParams, robustLevel
-                  );
-                  const robustVal = robustMap[`${r.proc}__${r.surg}`] ?? r.p50;
-                  return (
-                    <tr key={i}>
-                      <td><span style={{ color:SURGEON_COLORS[r.surg], fontWeight:600 }}>{r.surg}</span></td>
-                      <td style={{ color:"#888", fontSize:11 }}>{r.proc}</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{r.mean}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.p50}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#6bcb77" }}>{r.p80}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff9f43", fontWeight:600 }}>+{r.mean-r.p50}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:MODE_CONFIG[planMode].color }}>{r.planned}'</td>
-                      <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:"#00d4ff" }}>{robustVal}'</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+              marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
+              ⚡ {lang==="pl" ? "Zakłócenia" : "Disruptions"}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {/* Delay */}
+              <div style={{ background: enableDelay ? "#ff9f4314" : "#111118",
+                border:`1px solid ${enableDelay ? "#ff9f4366" : "#1e1e2a"}`, borderRadius:8, padding:"14px 16px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: enableDelay ? 14 : 0,
+                  cursor:"pointer" }} onClick={() => setEnableDelay(v => !v)}>
+                  <div style={{ width:18, height:18, borderRadius:4, flexShrink:0,
+                    background: enableDelay ? "#ff9f43" : "transparent",
+                    border:`2px solid ${enableDelay ? "#ff9f43" : "#333"}`,
+                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    {enableDelay && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
+                  </div>
+                  <span style={{ fontSize:12, fontWeight:600, color: enableDelay ? "#ff9f43" : "#555" }}>
+                    ⏱ {t.schedule.enableDelay}
+                  </span>
+                </div>
+                {enableDelay && (
+                  <div>
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                        <span style={{ fontSize:10, color:"#888" }}>{t.params.delayOnTime}</span>
+                        <span style={{ fontSize:11, color:"#ff9f43", fontFamily:"'JetBrains Mono',monospace" }}>{Math.round(delayOnTime*100)}%</span>
+                      </div>
+                      <input type="range" min={0} max={1} step={0.05} value={delayOnTime}
+                        onChange={e => setDelayOnTime(parseFloat(e.target.value))}
+                        style={{ width:"100%", accentColor:"#ff9f43", cursor:"pointer" }} />
+                    </div>
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                        <span style={{ fontSize:10, color:"#888" }}>{t.params.delayMean}</span>
+                        <span style={{ fontSize:11, color:"#ff9f43", fontFamily:"'JetBrains Mono',monospace" }}>{delayMean}'</span>
+                      </div>
+                      <input type="range" min={5} max={60} step={5} value={delayMean}
+                        onChange={e => setDelayMean(parseInt(e.target.value))}
+                        style={{ width:"100%", accentColor:"#ff9f43", cursor:"pointer" }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* SOR */}
+              <div style={{ background: enableSor ? "#ff224414" : "#111118",
+                border:`1px solid ${enableSor ? "#ff224466" : "#1e1e2a"}`, borderRadius:8, padding:"14px 16px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: enableSor ? 14 : 0,
+                  cursor:"pointer" }} onClick={() => setEnableSor(v => !v)}>
+                  <div style={{ width:18, height:18, borderRadius:4, flexShrink:0,
+                    background: enableSor ? "#ff2244" : "transparent",
+                    border:`2px solid ${enableSor ? "#ff2244" : "#333"}`,
+                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    {enableSor && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
+                  </div>
+                  <span style={{ fontSize:12, fontWeight:600, color: enableSor ? "#ff2244" : "#555" }}>
+                    🚨 {t.schedule.enableSor}
+                  </span>
+                </div>
+                {enableSor && (
+                  <div>
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                        <span style={{ fontSize:10, color:"#888" }}>{t.params.sorLambda}</span>
+                        <span style={{ fontSize:11, color:"#ff2244", fontFamily:"'JetBrains Mono',monospace" }}>λ={sorLambda}</span>
+                      </div>
+                      <input type="range" min={0.5} max={3} step={0.5} value={sorLambda}
+                        onChange={e => setSorLambda(parseFloat(e.target.value))}
+                        style={{ width:"100%", accentColor:"#ff2244", cursor:"pointer" }} />
+                    </div>
+                    <div style={{ marginBottom:10 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                        <span style={{ fontSize:10, color:"#888" }}>{t.params.sorDuration}</span>
+                        <span style={{ fontSize:11, color:"#ff2244", fontFamily:"'JetBrains Mono',monospace" }}>{sorDuration}'</span>
+                      </div>
+                      <input type="range" min={20} max={120} step={10} value={sorDuration}
+                        onChange={e => setSorDuration(parseInt(e.target.value))}
+                        style={{ width:"100%", accentColor:"#ff2244", cursor:"pointer" }} />
+                    </div>
+                    <div style={{ display:"flex", gap:6 }}>
+                      {["preempt","end"].map((p, i) => (
+                        <button key={p} onClick={() => setSorPriority(p)} style={{
+                          flex:1, padding:"5px 8px", borderRadius:6, cursor:"pointer", fontSize:10,
+                          border:`1px solid ${sorPriority===p ? "#ff2244" : "#252530"}`,
+                          background: sorPriority===p ? "#ff224420" : "#0d0d14",
+                          color: sorPriority===p ? "#ff2244" : "#555",
+                          fontFamily:"'Syne',sans-serif", fontWeight:600,
+                        }}>{t.params.sorPriorityOptions[i]}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
+
+          {/* SEKCJA: Finanse */}
+          <div className="card">
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+              marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
+              💰 {lang==="pl" ? "Parametry finansowe" : "Financial parameters"}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16 }}>
+              {[
+                { label: lang==="pl"?"Przychód (zł/min)":"Revenue (zł/min)", value: revenuePerMin, set: setRevenuePerMin, min:50, max:300, step:10, color:"#6bcb77", fmt: v=>`${v} zł` },
+                { label: lang==="pl"?"Koszt nadgodzin (zł/h)":"Overtime cost (zł/h)", value: Math.round(overtimeCostPerMin*60), set: v=>setOvertimeCostPerMin(v/60), min:100, max:2000, step:50, color:"#ff6b6b", fmt: v=>`${v} zł` },
+                { label: lang==="pl"?"Koszt dnia sali (tys.)":"OR day cost (k zł)", value: dayOperatingCost, set: setDayOperatingCost, min:50, max:300, step:10, color:"#a78bfa", fmt: v=>`${v} tys.` },
+              ].map(f => (
+                <div key={f.label}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                    <span style={{ fontSize:10, color:"#888" }}>{f.label}</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:f.color, fontFamily:"'JetBrains Mono',monospace" }}>{f.fmt(f.value)}</span>
+                  </div>
+                  <input type="range" min={f.min} max={f.max} step={f.step} value={f.value}
+                    onChange={e => f.set(parseInt(e.target.value))}
+                    style={{ width:"100%", accentColor:f.color, cursor:"pointer" }} />
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
       )}
+
 
       {/* ── PARAMS tab ── */}
       {activeTab === "params" && (
