@@ -51,6 +51,7 @@ const T = {
       optimize: "5. Optymalizacja",
       summary:  "6. Podsumowanie",
       monte:    "7. Monte Carlo",
+      test:     "8. Wynik test",
     },
     schedule: {
       title: "Zbuduj plan operacyjny",
@@ -182,6 +183,7 @@ const T = {
       optimize: "5. Optimization",
       summary:  "6. Summary",
       monte:    "7. Monte Carlo",
+      test:     "8. Results test",
     },
     schedule: {
       title: "Build the operating schedule",
@@ -1453,6 +1455,7 @@ export default function ORSimV5() {
   };
 
   const [mcResults, setMcResults] = useState(null);
+  const [selectedStrat, setSelectedStrat] = useState("robust");
   const [mcRunning, setMcRunning] = useState(false);
 
   const runMonteCarlo = useCallback((iterOverride) => {
@@ -3011,6 +3014,69 @@ export default function ORSimV5() {
           )}
         </div>
       )}
+
+      {/* ── TEST tab ── */}
+      {activeTab === "test" && (() => {
+        const planColor = MODE_CONFIG[planMode].color;
+        const robustColor = "#00d4ff";
+        const rhColor = "#6bcb77";
+        const optDays = daysOptimized ? daysOptimized.length : numDays;
+        const saved = Math.max(0, numDays - optDays);
+
+        const STRATS = [
+          { key:"mean",   label:"Mean",                              color:"#ff6b6b", days: days },
+          { key:"p50",    label:"P50",                               color:"#e07b39", days: allStrategiesDays?.p50 ?? days },
+          { key:"p80",    label:"P80",                               color:"#6bcb77", days: allStrategiesDays?.p80 ?? days },
+          { key:"robust", label:`Robust Γ=${robustLevel.toFixed(1)}`, color:"#00d4ff", days: daysRobust },
+          { key:"rh",     label:`Rolling Horizon · ${optDays}d${saved>0?" 🎯-"+saved+"d":""}`, color:"#a78bfa", days: daysOptimized },
+        ];
+
+        const active = STRATS.find(s => s.key === selectedStrat) ?? STRATS[3];
+
+        if (!daysOptimized) return (
+          <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
+            fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+            {lang==="pl" ? "Kliknij ▶ Uruchom symulację" : "Click ▶ Run simulation"}
+          </div>
+        );
+
+        return (
+          <div style={{ display:"grid", gap:12 }}>
+            {/* przełącznik */}
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {STRATS.map(s => (
+                <button key={s.key} onClick={() => setSelectedStrat(s.key)} style={{
+                  padding:"7px 14px", borderRadius:6, cursor:"pointer", fontSize:11, fontWeight:600,
+                  border:`1px solid ${selectedStrat===s.key ? s.color : "#252530"}`,
+                  background: selectedStrat===s.key ? `${s.color}18` : "#0d0d14",
+                  color: selectedStrat===s.key ? s.color : "#555",
+                  fontFamily:"'Syne',sans-serif",
+                }}>{s.label}</button>
+              ))}
+            </div>
+
+            {/* 2 Gantty */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div className="card" style={{ borderTop:`2px solid ${planColor}` }}>
+                <div style={{ fontSize:11, fontWeight:700, color:planColor, marginBottom:8 }}>
+                  {lang==="pl"?"Plan bazowy":"Base plan"} ({MODE_CONFIG[planMode].label}) · {numDays}d
+                </div>
+                <MultiDayGantt days={days} planColor={planColor} t={t.gantt} />
+              </div>
+              <div className="card" style={{ borderTop:`2px solid ${active.color}` }}>
+                <div style={{ fontSize:11, fontWeight:700, color:active.color, marginBottom:8 }}>
+                  {active.label}
+                </div>
+                {active.days
+                  ? <MultiDayGantt days={active.days} planColor={active.color} t={t.gantt} />
+                  : <div style={{ color:"#555", fontSize:11, fontFamily:"'JetBrains Mono',monospace" }}>—</div>
+                }
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
