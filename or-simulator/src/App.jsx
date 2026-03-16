@@ -702,14 +702,14 @@ function simulateDaysToComplete(plan, procParams, matrix, planMode, customOffset
   return day;
 }
 // Returns { base: days[], robust: days[] } using same random draws
-function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions = {}, robustPlanOverride = null) {
+function simulateDual(plan, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions = {}, robustPlanOverride = null, externalDraws = null) {
   const { enableDelay=false, delayOnTime=0.7, delayMean=20,
           enableSor=false, sorLambda=1, sorDuration=60, sorPriority="end" } = disruptions;
   const HARD_END = END + overtimeLimit;
 
   // Pre-generate all random draws for the entire period
   // Each op per day gets: actual duration, SOR cases, start delay
-  const draws = Array.from({ length: numDays }, (_, d) => {
+  const draws = externalDraws ?? Array.from({ length: numDays }, (_, d) => {
     const startDelay = enableDelay ? sampleStartDelay(delayOnTime, delayMean) : 0;
     const sorCases = [];
     if (enableSor) {
@@ -887,21 +887,32 @@ function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptio
   let globalPlanId = 0;
   const days = [];
   const totalDays = dayPlans.length;
+  const MAX_EXTRA_DAYS = 5; // safety limit
 
   // Build flat actuals pool from draws (reuse same random values)
   const actualsPool = draws.flatMap(d => d.actuals);
   let actualIdx = 0;
 
-  for (let d = 0; d < totalDays; d++) {
+  // Run planned days + extra days for carry-over
+  const totalDaysWithExtra = totalDays + MAX_EXTRA_DAYS;
+
+  for (let d = 0; d < totalDaysWithExtra; d++) {
+    // after planned days — only continue if there's carry-over
+    if (d >= totalDays && carryQueue.length === 0 && sorCarryQueue.length === 0) break;
+
     const draw = draws[Math.min(d, draws.length - 1)];
-    const { startDelay, sorCases } = draw;
+    // extra days have no new SOR/delay — only carry-over is handled
+    const startDelay = d < totalDays ? draw.startDelay : 0;
+    const sorCases = d < totalDays ? draw.sorCases : [];
 
     const todaySorCarry = [...sorCarryQueue];
     sorCarryQueue = [];
 
-    const freshOps = dayPlans[d].map(op => ({
-      ...op, planId: ++globalPlanId, isCarryOver: false, isAccelerated: op.isAccelerated ?? false
-    }));
+    const freshOps = d < totalDays
+      ? dayPlans[d].map(op => ({
+          ...op, planId: ++globalPlanId, isCarryOver: false, isAccelerated: op.isAccelerated ?? false
+        }))
+      : []; // extra carry-over days have no new ops
     const todayPlan = [
       ...carryQueue.map(op => ({ ...op, isCarryOver: true })),
       ...freshOps,
@@ -963,7 +974,7 @@ function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptio
 
     if (sorPriority === "end") {
       for (const sor of sorCases) {
-        if (!overflowed && tReal + sor.duration <= HARD_END) {
+        if (tReal + sor.duration <= HARD_END) {
           rows.push({
             id: rows.length+1, planId:"SOR", dayIdx:d, chir:"SOR",
             proc:"Emergency (SOR)", isCarryOver:false, isSor:true,
@@ -984,6 +995,7 @@ function simulateOptimized(dayPlans, procParams, draws, overtimeLimit, disruptio
       sorCarryCount: sorCarryQueue.length,
       lastEnd: rows.at(-1)?.endReal ?? START,
       startDelay, sorCount: sorCases.length,
+      sorExecuted: rows.filter(r => r.isSor && !r.isCarryOver).length,
     });
   }
 
@@ -1286,7 +1298,7 @@ function MultiDayGantt({ days, planColor, t }) {
   const W = 560;
   return (
     <div>
-      {days.map(({ dayIdx, rows, lastEnd, startDelay, sorCount }) => {
+      {days.map(({ dayIdx, rows, lastEnd, startDelay, sorCount, sorExecuted }) => {
         const overtime = lastEnd > END;
         const carryOvers = rows.filter(r => r.isCarryOver && !r.isSor).length;
         const accelerated = rows.filter(r => r.isAccelerated).length;
@@ -1315,7 +1327,7 @@ function MultiDayGantt({ days, planColor, t }) {
                 )}
                 {sorCount > 0 && (
                   <span style={{ fontSize:10, color:"#ff2244", fontFamily:"'JetBrains Mono',monospace", background:"#ff224422", padding:"2px 7px", borderRadius:4 }}>
-                    🚨 SOR ×{sorCount}
+                    🚨 SOR ×{sorExecuted ?? sorCount}{sorExecuted !== undefined && sorExecuted < sorCount ? ` (⚠ ${sorCount - sorExecuted} nieobs.)` : ""}
                   </span>
                 )}
               </div>
@@ -1436,10 +1448,11 @@ export default function ORSimV5() {
     const rhDayPlans = buildRollingHorizonPlan(slots, procParams, overtimeLimit, numDays, planningWindow);
     const rhDays = simulateOptimized(rhDayPlans, procParams, result.draws, overtimeLimit, disruptions);
     setDaysOptimized(rhDays);
-    // simulate all 5 strategies for summary tab (same draws for fair comparison)
+    // simulate all 5 strategies using same draws for fair comparison
     const allStrats = {};
     for (const mode of ["mean", "p50", "p80", "custom"]) {
-      allStrats[mode] = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
+      const r = simulateDual(validPlan, procParams, matrix, mode, customOffsets, robustLevel, numDays, overtimeLimit, disruptions, null, result.draws);
+      allStrats[mode] = r.base;
     }
     allStrats.robust = result.robust;
     allStrats.rh = rhDays;
