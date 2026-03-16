@@ -44,12 +44,13 @@ const T = {
       sorTotalTip: "łączna liczba nieplanowanych przypadków z SOR / ED",
     },
     tabs: {
-      schedule: "1. Plan dnia",
-      planning: "2. Parametry planowania",
-      params:   "3. Rozkłady czasów realizacji",
-      gantt:    "4. Gantt (wyniki)",
-      monte:    "5. Analiza Monte Carlo",
-      optimize: "6. Optymalizacja",
+      schedule: "1. Plan",
+      settings: "2. Ustawienia",
+      params:   "3. Rozkłady",
+      gantt:    "4. Wyniki",
+      optimize: "5. Optymalizacja",
+      summary:  "6. Podsumowanie",
+      monte:    "7. Monte Carlo",
     },
     schedule: {
       title: "Zbuduj plan operacyjny",
@@ -174,12 +175,13 @@ const T = {
       sorTotalTip: "total unplanned emergency cases across all days",
     },
     tabs: {
-      schedule: "1. Schedule",
-      planning: "2. Planning params",
-      params:   "3. Distribution of realization times",
-      gantt:    "4. Gantt (results)",
-      monte:    "5. Monte Carlo Analysis",
-      optimize: "6. Optimization",
+      schedule: "1. Plan",
+      settings: "2. Settings",
+      params:   "3. Distributions",
+      gantt:    "4. Results",
+      optimize: "5. Optimization",
+      summary:  "6. Summary",
+      monte:    "7. Monte Carlo",
     },
     schedule: {
       title: "Build the operating schedule",
@@ -1812,8 +1814,8 @@ export default function ORSimV5() {
         </div>
       )}
 
-      {/* ── PLANNING tab ── */}
-      {activeTab === "planning" && (
+      {/* ── SETTINGS tab ── */}
+      {activeTab === "settings" && (
         <div style={{ display:"grid", gap:14 }}>
           <div className="card">
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>{t.planning.modeTitle}</div>
@@ -2625,6 +2627,16 @@ export default function ORSimV5() {
           </div>
         );
       })()}
+
+      {/* ── SUMMARY tab ── */}
+      {activeTab === "summary" && (
+        <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
+          fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+          {lang==="pl"
+            ? "Podsumowanie — uruchom symulację (▶) aby zobaczyć wyniki wszystkich 3 strategii"
+            : "Summary — run simulation (▶) to see results for all 3 strategies"}
+        </div>
+      )}
 
       {/* ── MONTE CARLO tab ── */}
       {activeTab === "monte" && (
