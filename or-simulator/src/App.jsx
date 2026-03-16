@@ -3018,30 +3018,107 @@ export default function ORSimV5() {
       {/* ── TEST tab ── */}
       {activeTab === "test" && (() => {
         const planColor = MODE_CONFIG[planMode].color;
-        const robustColor = "#00d4ff";
-        const rhColor = "#6bcb77";
         const optDays = daysOptimized ? daysOptimized.length : numDays;
         const saved = Math.max(0, numDays - optDays);
 
         const STRATS = [
-          { key:"mean",   label:"Mean",                              color:"#ff6b6b", days: days },
-          { key:"p50",    label:"P50",                               color:"#e07b39", days: allStrategiesDays?.p50 ?? days },
-          { key:"p80",    label:"P80",                               color:"#6bcb77", days: allStrategiesDays?.p80 ?? days },
+          { key:"mean",   label:"Średnia",                            color:"#ff6b6b", days: allStrategiesDays?.mean ?? days },
+          { key:"p50",    label:"P50",                                color:"#e07b39", days: allStrategiesDays?.p50  ?? days },
+          { key:"p80",    label:"P80",                                color:"#6bcb77", days: allStrategiesDays?.p80  ?? days },
           { key:"robust", label:`Robust Γ=${robustLevel.toFixed(1)}`, color:"#00d4ff", days: daysRobust },
-          { key:"rh",     label:`Rolling Horizon · ${optDays}d${saved>0?" 🎯-"+saved+"d":""}`, color:"#a78bfa", days: daysOptimized },
+          { key:"rh",     label:`Rolling Horizon${saved>0?" 🎯-"+saved+"d":""}`, color:"#a78bfa", days: daysOptimized },
         ];
 
         const active = STRATS.find(s => s.key === selectedStrat) ?? STRATS[3];
 
-        if (!daysOptimized) return (
+        if (!allStrategiesDays) return (
           <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
             fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
             {lang==="pl" ? "Kliknij ▶ Uruchom symulację" : "Click ▶ Run simulation"}
           </div>
         );
 
+        const calcKPI = (d, totalD) => {
+          if (!d) return null;
+          const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
+          const totalOTMinAll = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
+          const carryOver = allR.filter(r => r.isCarryOver && !r.isAccelerated).length;
+          const accelerated = allR.filter(r => r.isAccelerated).length;
+          const pctAccelerated = allR.length > 0 ? Math.round(accelerated / allR.length * 100) : 0;
+          const eff = allR.length ? ((allR.reduce((a,r)=>a+r.actual,0)+PREP*(allR.length-1))/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
+          const util = allR.length ? (allR.reduce((a,r)=>a+r.actual,0)/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
+          const otcr = allR.length ? Math.round(allR.filter(r=>r.delay<=0).length/allR.length*100) : 0;
+          const lastEnd = d.at(-1)?.lastEnd ?? END;
+          const totalActual = allR.reduce((a,r)=>a+r.actual,0);
+          const financial = Math.round((totalActual*revenuePerMin - totalOTMinAll*overtimeCostPerMin)/totalD);
+          return { otcr, carryOver, eff, util, lastEnd, overtime: lastEnd > END,
+            totalOTMin: Math.round(totalOTMinAll/totalD), financial, pctAccelerated, days: totalD };
+        };
+
+        const kpiData = STRATS.map(s => ({ ...s, kpi: calcKPI(s.days, s.key === "rh" ? optDays : numDays) }));
+
+        const kpiRows = [
+          { label:lang==="pl"?"Przebiegów":"Runs",           fmt: ()=>"1" },
+          { label:lang==="pl"?"Dni planu":"Plan days",        fmt: k=>`${k.days}`,                                         better:"less" },
+          { label:lang==="pl"?"Koniec dnia":"End of day",     fmt: k=>`${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}` },
+          { label:"OTCR%",                                    fmt: k=>`${k.otcr}%`,                                        better:"more" },
+          { label:"Carry-over",                               fmt: k=>`${k.carryOver}`,                                    better:"less" },
+          { label:lang==="pl"?"Efektywność":"Efficiency",     fmt: k=>`${k.eff}%`,                                         better:"more" },
+          { label:lang==="pl"?"Wykorzystanie":"Utilization",  fmt: k=>`${k.util}%`,                                        better:"more" },
+          { label:lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)",fmt: k=>`${k.totalOTMin}'`,                                  better:"less" },
+          { label:"⏩ % "+( lang==="pl"?"przysp.":"accel."),   fmt: (k,key)=> key==="rh"?`${k.pctAccelerated}%`:"0%",      better:"more" },
+          { label:lang==="pl"?"Wynik/dzień":"Result/day",     fmt: k=>`${k.financial.toLocaleString()} zł`,                better:"more" },
+          { label:lang==="pl"?"Dni do końca":"Days to finish", fmt: k=>`${k.days}`,                                        better:"less" },
+        ];
+
         return (
           <div style={{ display:"grid", gap:12 }}>
+
+            {/* tabela podsumowania */}
+            <div className="card">
+              <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+                marginBottom:8, fontFamily:"'JetBrains Mono',monospace" }}>
+                {lang==="pl"?"Podsumowanie — 5 strategii":"Summary — 5 strategies"}
+                <span style={{ color:"#555", marginLeft:8 }}>
+                  · {numDays}d · {overtimeLimit}' OT
+                  {enableSor?` · SOR λ=${sorLambda}`:""}
+                  {enableDelay?` · delay P=${Math.round((1-delayOnTime)*100)}%`:""}
+                  {" · "}Γ={robustLevel.toFixed(1)} · okno={planningWindow}d
+                </span>
+              </div>
+              <div style={{ overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
+                  <thead><tr>
+                    <th style={{ color:"#444", textAlign:"left", minWidth:120 }}>KPI</th>
+                    {kpiData.map(s => <th key={s.key} style={{ color:s.color, textAlign:"center" }}>{s.label}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {kpiRows.map(row => {
+                      const vals = kpiData.map(s => s.kpi ? row.fmt(s.kpi, s.key) : "—");
+                      const nums = vals.map(v => parseFloat(v)).filter(n => !isNaN(n));
+                      const best = row.better === "more" ? Math.max(...nums) : row.better === "less" ? Math.min(...nums) : null;
+                      return (
+                        <tr key={row.label}>
+                          <td style={{ color:"#666", fontSize:11 }}>{row.label}</td>
+                          {kpiData.map((s, i) => {
+                            const num = parseFloat(vals[i]);
+                            const isBest = best !== null && !isNaN(num) && num === best;
+                            return (
+                              <td key={s.key} style={{
+                                fontFamily:"'JetBrains Mono',monospace", textAlign:"center",
+                                fontWeight: isBest ? 700 : 400, fontSize: isBest ? 13 : 12,
+                                color: isBest ? "#6bcb77" : s.color,
+                              }}>{vals[i]}</td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* przełącznik */}
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               {STRATS.map(s => (
