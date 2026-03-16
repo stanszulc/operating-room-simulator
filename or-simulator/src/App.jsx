@@ -1070,6 +1070,17 @@ function buildRandomPlan(n) {
     chir: SURGEONS[Math.floor(Math.random() * SURGEONS.length)],
   }));
 }
+
+// Demo plan — fixed mix designed to show free slots + Rolling Horizon savings
+function buildDemoPlan() {
+  return [
+    { proc: "Cholecystectomy",  chir: "C" },
+    { proc: "Hernia Repair",    chir: "A" },
+    { proc: "Major Surgery",    chir: "B" },
+    { proc: "Appendectomy",     chir: "C" },
+    { proc: "Hernia Repair",    chir: "B" },
+  ];
+}
 function buildEmptySlots(n) {
   return Array.from({ length: n }, () => ({ proc: null, chir: "A" }));
 }
@@ -1366,10 +1377,10 @@ export default function ORSimV5() {
   const [planMode, setPlanMode]         = useLocalStorage("or_planMode", "mean");
   const [customOffsets, setCustomOffsets] = useLocalStorage("or_offsets", { Appendectomy:0, Cholecystectomy:0, "Hernia Repair":0, "Major Surgery":0 });
   const [lang, setLang]                 = useLocalStorage("or_lang", "pl");
-  const [numDays, setNumDays]           = useLocalStorage("or_numDays", 3);
-  const [overtimeLimit, setOvertimeLimit] = useLocalStorage("or_overtime", 240);
-  const [opsCount, setOpsCount]         = useLocalStorage("or_opsCount", 6);
-  const [slots, setSlots]               = useLocalStorage("or_slots", buildRandomPlan(6));
+  const [numDays, setNumDays]           = useLocalStorage("or_numDays", 7);
+  const [overtimeLimit, setOvertimeLimit] = useLocalStorage("or_overtime", 60);
+  const [opsCount, setOpsCount]         = useLocalStorage("or_opsCount", 5);
+  const [slots, setSlots]               = useLocalStorage("or_slots", buildDemoPlan());
   const [slotsRobust, setSlotsRobust]   = useState(null);
   const [optimizedDayPlans, setOptimizedDayPlans] = useState(null); // reserved for future use
   const [daysOptimized, setDaysOptimized] = useState(null); // rolling horizon result
@@ -1378,8 +1389,8 @@ export default function ORSimV5() {
   const [enableDelay, setEnableDelay]   = useLocalStorage("or_enableDelay", false);
   const [delayOnTime, setDelayOnTime]   = useLocalStorage("or_delayOnTime", 0.7);
   const [delayMean, setDelayMean]       = useLocalStorage("or_delayMean", 20);
-  const [enableSor, setEnableSor]       = useLocalStorage("or_enableSor", false);
-  const [sorLambda, setSorLambda]       = useLocalStorage("or_sorLambda", 1);
+  const [enableSor, setEnableSor]       = useLocalStorage("or_enableSor", true);
+  const [sorLambda, setSorLambda]       = useLocalStorage("or_sorLambda", 0.5);
   const [sorDuration, setSorDuration]   = useLocalStorage("or_sorDuration", 60);
   const [sorPriority, setSorPriority]   = useLocalStorage("or_sorPriority", "end");
 
@@ -1391,7 +1402,7 @@ export default function ORSimV5() {
   const [revenuePerMin, setRevenuePerMin] = useLocalStorage("or_revenue", 160);
   const [overtimeCostPerMin, setOvertimeCostPerMin] = useLocalStorage("or_otcost", 1100/60);
   const [dayOperatingCost, setDayOperatingCost] = useLocalStorage("or_daycost", 100);
-  const [robustLevel, setRobustLevel] = useLocalStorage("or_robustLevel", 2.0);
+  const [robustLevel, setRobustLevel] = useLocalStorage("or_robustLevel", 1.5);
   const [planningWindow, setPlanningWindow] = useLocalStorage("or_planWindow", 3);
 
   const t = T[lang];
@@ -1528,6 +1539,18 @@ export default function ORSimV5() {
     setSlotsRobust(null);
     setLastOptimizeResult(null);
     setOptimizedDayPlans(null);
+  };
+
+  const handleResetDemo = () => {
+    setSlots(buildDemoPlan());
+    setOpsCount(5);
+    setNumDays(7);
+    setOvertimeLimit(60);
+    setEnableSor(true);
+    setSorLambda(0.5);
+    setRobustLevel(1.5);
+    setSlotsRobust(null);
+    setLastOptimizeResult(null);
   };
 
   const [lastOptimizeResult, setLastOptimizeResult] = useState(null);
@@ -1705,6 +1728,7 @@ export default function ORSimV5() {
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
             <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace" }}>{t.schedule.title}</div>
             <div style={{ display:"flex", gap:8 }}>
+              <button onClick={handleResetDemo} style={{ background:"#e07b3918", border:"1px solid #e07b3944", color:"#e07b39", borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>🏥 Demo</button>
               <button onClick={handleRandomize} style={{ background:"#1a1a28", border:"1px solid #252530", color:"#aaa", borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>{t.schedule.randomize}</button>
               <button onClick={handleOptimize} style={{ background:"#00d4ff18", border:"1px solid #00d4ff44", color:"#00d4ff", borderRadius:8, padding:"8px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
                 🔧 {lang==="pl" ? "Optymalizuj" : "Optimize"}
@@ -1730,6 +1754,13 @@ export default function ORSimV5() {
               }
             </div>
           )}
+          <div style={{ marginBottom:16, padding:"10px 16px", borderRadius:8,
+            background:"#e07b3912", border:"1px solid #e07b3944",
+            fontSize:12, fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>
+            🏥 {lang==="pl"
+              ? "Gotowy plan demonstracyjny · 7 dni · 5 operacji/dzień · SOR włączony — kliknij ▶ Uruchom symulację aby zobaczyć wyniki"
+              : "Demo plan ready · 7 days · 5 ops/day · SOR enabled — click ▶ Run simulation to see results"}
+          </div>
           <ScheduleBuilder slots={slots} setSlots={setSlots} opsCount={opsCount} setOpsCount={setOpsCount}
             onRun={runSim} t={t.schedule} matrix={matrix} procParams={procParams} planMode={planMode}
             customOffsets={customOffsets} planColor={MODE_CONFIG[planMode].color} numDays={numDays}
