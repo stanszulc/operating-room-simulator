@@ -1385,7 +1385,8 @@ export default function ORSimV5() {
   const [slots, setSlots]               = useLocalStorage("or_slots", buildDemoPlan());
   const [slotsRobust, setSlotsRobust]   = useState(null);
   const [optimizedDayPlans, setOptimizedDayPlans] = useState(null); // reserved for future use
-  const [daysOptimized, setDaysOptimized] = useState(null); // rolling horizon result
+  const [daysOptimized, setDaysOptimized] = useState(null);
+  const [allStrategiesDays, setAllStrategiesDays] = useState(null); // {mean, p50, p80, custom, robust, rh}
 
   // disruption state
   const [enableDelay, setEnableDelay]   = useLocalStorage("or_enableDelay", false);
@@ -1431,7 +1432,16 @@ export default function ORSimV5() {
     setDualDays(result);
     // build rolling horizon plan and simulate with same draws
     const rhDayPlans = buildRollingHorizonPlan(slots, procParams, overtimeLimit, numDays, planningWindow);
-    setDaysOptimized(simulateOptimized(rhDayPlans, procParams, result.draws, overtimeLimit, disruptions));
+    const rhDays = simulateOptimized(rhDayPlans, procParams, result.draws, overtimeLimit, disruptions);
+    setDaysOptimized(rhDays);
+    // simulate all 5 strategies for summary tab (same draws for fair comparison)
+    const allStrats = {};
+    for (const mode of ["mean", "p50", "p80", "custom"]) {
+      allStrats[mode] = simulateMultiDay(validPlan, procParams, matrix, mode, customOffsets, numDays, overtimeLimit, disruptions);
+    }
+    allStrats.robust = result.robust;
+    allStrats.rh = rhDays;
+    setAllStrategiesDays(allStrats);
     setActiveTab("gantt");
   }, [slots, slotsRobust, procParams, matrix, planMode, customOffsets, robustLevel, numDays, overtimeLimit, enableDelay, delayOnTime, delayMean, enableSor, sorLambda, sorDuration, sorPriority, planningWindow]);
 
@@ -2533,14 +2543,156 @@ export default function ORSimV5() {
       })()}
 
       {/* ── SUMMARY tab ── */}
-      {activeTab === "summary" && (
-        <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
-          fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
-          {lang==="pl"
-            ? "Podsumowanie — uruchom symulację (▶) aby zobaczyć wyniki wszystkich 3 strategii"
-            : "Summary — run simulation (▶) to see results for all 3 strategies"}
-        </div>
-      )}
+      {activeTab === "summary" && (() => {
+        if (!allStrategiesDays) return (
+          <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555",
+            fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
+            {lang==="pl"
+              ? "Kliknij ▶ Uruchom symulację aby zobaczyć podsumowanie wszystkich strategii"
+              : "Click ▶ Run simulation to see summary for all strategies"}
+          </div>
+        );
+
+        const calcKPI = (d, totalD) => {
+          if (!d) return null;
+          const allR = d.flatMap(x => x.rows).filter(r => !r.isSor);
+          const totalOTMin = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
+          // carry-over = ops that arrived from previous day (isCarryOver=true, not accelerated)
+          const carryOver = allR.filter(r => r.isCarryOver && !r.isAccelerated).length;
+          // accelerated = ops pulled from future days
+          const accelerated = allR.filter(r => r.isAccelerated).length;
+          const totalOps = allR.length;
+          const pctAccelerated = totalOps > 0 ? Math.round(accelerated / totalOps * 100) : 0;
+          const eff = allR.length ? ((allR.reduce((a,r)=>a+r.actual,0)+PREP*(allR.length-1))/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
+          const util = allR.length ? (allR.reduce((a,r)=>a+r.actual,0)/((END-START+overtimeLimit)*totalD)*100).toFixed(1) : "—";
+          const otcr = allR.length ? Math.round(allR.filter(r=>r.delay<=0).length/allR.length*100) : 0;
+          const lastEnd = d.at(-1)?.lastEnd ?? END;
+          const totalActual = allR.reduce((a,r)=>a+r.actual,0);
+          const totalOTMinAll = d.reduce((a, x) => a + Math.max(0, x.lastEnd - END), 0);
+          const financial = Math.round((totalActual*revenuePerMin - totalOTMinAll*overtimeCostPerMin)/totalD);
+          const sorCount = d.reduce((a,x)=>a+(x.sorCount??0),0);
+          return { otcr, carryOver, eff, util, lastEnd,
+            overtime: lastEnd > END,
+            totalOTMin: Math.round(totalOTMinAll/totalD),
+            financial, accelerated, pctAccelerated, days: totalD, sorCount };
+        };
+
+        const rhDays = allStrategiesDays.rh?.length ?? numDays;
+        const savedDays = Math.max(0, numDays - rhDays);
+
+        const strategies = [
+          { key:"mean",   label: lang==="pl"?"Średnia":"Mean",    color:"#ff6b6b", days: numDays },
+          { key:"p50",    label: "P50",                           color:"#e07b39", days: numDays },
+          { key:"p80",    label: "P80",                           color:"#6bcb77", days: numDays },
+          { key:"robust", label: `Robust Γ=${robustLevel.toFixed(1)}`, color:"#00d4ff", days: numDays },
+          { key:"rh",     label: "Rolling Horizon",               color:"#a78bfa", days: rhDays },
+        ].map(s => ({ ...s, kpi: calcKPI(allStrategiesDays[s.key], s.days) }))
+         .filter(s => s.kpi !== null);
+
+        // MC results merged if available
+        const mcRuns = mcResults ? Object.values(mcResults)[0]?.endTimes?.length ?? 1 : 1;
+
+        const kpiDefs = [
+          { key:"runs",     label: lang==="pl"?"Przebiegów":"Runs",              fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mcRuns}` : "1",   better: null, isMC: true },
+          { key:"days",     label: lang==="pl"?"Dni planu":"Plan days",          fmt: k => `${k.days}`,                                             better: "less" },
+          { key:"end",      label: lang==="pl"?"Koniec dnia":"End of day",       fmt: k => `${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}`,       better: null },
+          { key:"otcr",     label: "OTCR%",                                       fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.otcr ?? k.otcr}%` : `${k.otcr}%`, better: "more" },
+          { key:"co",       label: "Carry-over",                                  fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgCarryOver?.toFixed(1) ?? k.carryOver}` : `${k.carryOver}`, better: "less" },
+          { key:"eff",      label: lang==="pl"?"Efektywność":"Efficiency",       fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgEfficiency ?? k.eff}%` : `${k.eff}%`, better: "more" },
+          { key:"util",     label: lang==="pl"?"Wykorzystanie":"Utilization",    fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgUtilization ?? k.util}%` : `${k.util}%`, better: "more" },
+          { key:"ot",       label: lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)", fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgOvertimeMin ?? k.totalOTMin}'` : `${k.totalOTMin}'`, better: "less" },
+          { key:"accel",    label: "⏩ % "+( lang==="pl"?"przyspieszonych":"accelerated"), fmt: (k, mc, mkey) => mkey === "rh" ? `${k.pctAccelerated}%` : "0%", better: "more" },
+          { key:"fin",      label: lang==="pl"?"Wynik/dzień (zł)":"Result/day", fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${(mc[mkey]?.avgFinancial ?? k.financial).toLocaleString()}` : `${k.financial.toLocaleString()}`, better: "more" },
+          { key:"dtf",      label: lang==="pl"?"Dni do końca":"Days to finish",  fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgDaysToFinish ?? k.days}` : `${k.days}`, better: "less" },
+        ];
+
+        return (
+          <div style={{ display:"grid", gap:12 }}>
+            <div className="card">
+              <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+                marginBottom:4, fontFamily:"'JetBrains Mono',monospace" }}>
+                {lang==="pl" ? "Podsumowanie — 5 strategii" : "Summary — 5 strategies"}
+                <span style={{ color:"#555", marginLeft:8 }}>
+                  · {numDays}d · {overtimeLimit}' OT
+                  {enableSor ? ` · SOR λ=${sorLambda}` : ""}
+                  {enableDelay ? ` · delay P=${Math.round((1-delayOnTime)*100)}%` : ""}
+                  {" · "}Γ={robustLevel.toFixed(1)} · {lang==="pl"?"okno":"window"}={planningWindow}d
+                </span>
+              </div>
+              {mcResults && (
+                <div style={{ fontSize:10, color:"#a78bfa", fontFamily:"'JetBrains Mono',monospace", marginBottom:12 }}>
+                  ✓ {lang==="pl" ? `MC załadowany — ${mcRuns} iteracji` : `MC loaded — ${mcRuns} iterations`}
+                  {" · "}{lang==="pl" ? "Rolling Horizon = 1 przebieg" : "Rolling Horizon = 1 run"}
+                </div>
+              )}
+              <div style={{ overflowX:"auto" }}>
+                <table style={{ width:"100%", borderCollapse:"collapse", minWidth:700 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ color:"#444", width:160 }}>KPI</th>
+                      {strategies.map(s => (
+                        <th key={s.key} style={{ color:s.color, textAlign:"center" }}>{s.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kpiDefs.map(row => {
+                      const vals = strategies.map(s => row.fmt(s.kpi, mcResults, s.key));
+                      const nums = vals.map(v => parseFloat(v)).filter(n => !isNaN(n));
+                      const best = row.better === "more" ? Math.max(...nums) : row.better === "less" ? Math.min(...nums) : null;
+                      return (
+                        <tr key={row.key} style={{ background: row.isMC ? "#a78bfa08" : "transparent" }}>
+                          <td style={{ color:"#666", fontSize:11, fontWeight: row.isMC ? 600 : 400 }}>{row.label}</td>
+                          {strategies.map((s, i) => {
+                            const num = parseFloat(vals[i]);
+                            const isBest = best !== null && !isNaN(num) && num === best;
+                            return (
+                              <td key={s.key} style={{
+                                fontFamily:"'JetBrains Mono',monospace", textAlign:"center",
+                                fontWeight: isBest ? 700 : 400,
+                                color: row.isMC
+                                  ? (mcResults && s.key !== "rh" ? "#a78bfa" : "#555")
+                                  : isBest ? "#6bcb77" : s.color,
+                                fontSize: isBest ? 13 : 12,
+                              }}>
+                                {vals[i]}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* financial savings */}
+            {savedDays > 0 && (
+              <div className="card" style={{ borderLeft:"3px solid #a78bfa" }}>
+                <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#a78bfa", textTransform:"uppercase",
+                  marginBottom:12, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                  💰 Rolling Horizon · {lang==="pl"?"oszczędność":"savings"} · -{savedDays} {lang==="pl"?"dni":"days"}
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12 }}>
+                  {[
+                    { val:`${savedDays}d`, lbl:lang==="pl"?"zaoszczędzone dni":"days saved", color:"#6bcb77" },
+                    { val:`${(savedDays*dayOperatingCost).toLocaleString()} tys.`, lbl:lang==="pl"?`koszt sali (${dayOperatingCost} tys./dzień)`:`OR cost (${dayOperatingCost}k/day)`, color:"#6bcb77" },
+                    { val:`${(savedDays*(END-START)*revenuePerMin/1000).toFixed(0)} tys.`, lbl:lang==="pl"?"potencjał przychodu":"revenue potential", color:"#4a9eff" },
+                  ].map(k => (
+                    <div key={k.lbl} style={{ background:"#0d0d14", borderRadius:8, padding:"14px 16px" }}>
+                      <div style={{ fontSize:24, fontWeight:700, color:k.color,
+                        fontFamily:"'JetBrains Mono',monospace" }}>{k.val}</div>
+                      <div style={{ fontSize:10, color:"#555", marginTop:4 }}>{k.lbl}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        );
+      })()}
 
       {/* ── MONTE CARLO tab ── */}
       {activeTab === "monte" && (
