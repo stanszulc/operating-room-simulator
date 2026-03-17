@@ -103,6 +103,7 @@ const T = {
       label: "Instrukcja obsługi",
       title: "Symulator Sali Operacyjnej",
       close: "Kliknij gdziekolwiek poza oknem aby zamknąć",
+      intro: "Sala operacyjna to jeden z najdroższych zasobów szpitala — godzina kosztuje tysiące złotych, a każda minuta przestoju lub przekroczenia planu generuje realne straty. Większość szpitali planuje operacje korzystając ze średnich czasów — to matematyczny błąd, bo rozkład czasów operacji jest log-normalny: kilka ekstremalnie długich przypadków zawyża średnią, przez co połowa operacji systematycznie przekracza plan. Ten symulator pokazuje jak różne strategie planowania radzą sobie z tą niepewnością. Możesz zbudować własny plan operacyjny, wybrać strategię (od naiwnej średniej po zaawansowane metody odporne na zakłócenia: MIT Robust Scheduling i Rolling Horizon Optimizer), a następnie uruchomić symulację — program losuje rzeczywiste czasy operacji z rozkładu statystycznego i pokazuje co się dzieje: opóźnienia, carry-over (operacje przesunięte na następny dzień), nieplanowane przypadki SOR z izby przyjęć. Analiza Monte Carlo pozwala porównać strategie na setkach losowych realizacji — zamiast jednego szczęśliwego lub pechowego dnia, widzisz pełny rozkład wyników.",
       steps: [
         { title: "1. Plan operacyjny", body: "Ustaw liczbę dni (suwak w nagłówku, max 30) i liczbę operacji / dzień (suwak w zakładce). Przeciągnij procedury z lewej puli na sloty lub kliknij '🎲 Losuj plan'. Każdemu slotowi przypisz chirurga (A / B / C) — chirurdzy różnią się współczynnikiem wydajności. Przycisk 🏥 Demo wczytuje gotowy plan demonstracyjny 7 dni × 5 ops z włączonym SOR. Przycisk 🔧 Optymalizuj sortuje operacje po przewidywalności (CV) i ustawia plan Robust. Zakłócenia (dolna sekcja): ⏱ opóźnienie startu pierwszej operacji dnia — możesz ustawić prawdopodobieństwo startu na czas i średni czas opóźnienia. 🚨 SOR — nieplanowany przypadek z izby przyjęć, losowany z rozkładu Poissona (λ = śr. liczba / dzień). Parametry SOR: czas trwania, priorytet (wyprzedza planowe vs na koniec dnia)." },
         { title: "2. Ustawienia strategii", body: "Tryb planu bazowego — jak wyznaczamy czas planowany per operacja: Średnia (błąd — log-normal ma długi ogon, średnia > mediana), P50 (mediana — typowy czas, 50% operacji przekroczy plan), P80 (bezpieczny — tylko 20% przekroczy plan), Własny (ręczna korekta offset per procedura). MIT Robust Scheduling (Denton et al.) — parametr Γ (Gamma) steruje budżetem buforów: budget = min(Γ × max_deviation, dostępny_czas). Im wyższe Γ, tym więcej czasu rezerwujesz na zmienne operacje — mniejsze ryzyko carry-over, ale mniejsza przepustowość. Wykres pod suwakiem pokazuje bufor per operacja proporcjonalny do jej zmienności (P80−P50). Rolling Horizon Optimizer — okno look-ahead: po zaplanowaniu dnia sprawdza czy zostało wolne miejsce i pożycza najkrótszą operację z kolejnych N dni. Zmiana okna zmienia agresywność optymalizacji." },
@@ -197,6 +198,7 @@ const T = {
       label: "User guide",
       title: "Operating Room Simulator",
       close: "Click anywhere outside to close",
+      intro: "The operating room is one of the most expensive resources in a hospital — an hour costs thousands, and every minute of delay or overrun generates real losses. Most hospitals schedule operations using average durations — a mathematical mistake, because operation times follow a log-normal distribution: a few extremely long cases inflate the mean, causing half of all operations to systematically exceed the plan. This simulator shows how different planning strategies handle that uncertainty. You can build your own operating schedule, choose a strategy (from the naive mean to advanced methods robust to disruptions: MIT Robust Scheduling and Rolling Horizon Optimizer), then run a simulation — the program draws actual operation times from a statistical distribution and shows what happens: delays, carry-overs (operations pushed to the next day), and unplanned emergency cases from the ED. Monte Carlo analysis lets you compare strategies across hundreds of random realizations — instead of one lucky or unlucky day, you see the full distribution of outcomes.",
       steps: [
         { title: "1. Operating schedule", body: "Set the number of days (header slider, up to 30) and ops per day (tab slider). Drag procedure tiles from the left pool onto slots or click '🎲 Randomize'. Assign a surgeon (A / B / C) to each slot — surgeons have different efficiency multipliers. The 🏥 Demo button loads a 7-day × 5-ops demo plan with SOR enabled. 🔧 Optimize sorts ops by predictability (CV) and sets the Robust plan. Disruptions (bottom section): ⏱ first case start delay — set the on-time probability and mean delay. 🚨 SOR — unplanned emergency cases drawn from a Poisson distribution (λ = avg cases/day). SOR parameters: duration, priority (preempts scheduled ops vs added at end of day)." },
         { title: "2. Strategy settings", body: "Base plan mode — how planned duration is set per operation: Mean (incorrect — log-normal has a long right tail, mean > median), P50 (median — typical time, 50% of ops will exceed plan), P80 (safe — only 20% will exceed), Custom (manual offset per procedure). MIT Robust Scheduling (Denton et al.) — Γ (Gamma) controls the buffer budget: budget = min(Γ × max_deviation, available_time). Higher Γ = more buffer for variable ops = lower carry-over risk but lower throughput. The chart below the slider shows buffer per operation proportional to its variability (P80−P50). Rolling Horizon Optimizer — look-ahead window: after scheduling each day it checks remaining capacity and borrows the shortest op from the next N days. Larger window = more aggressive optimization." },
@@ -1276,6 +1278,9 @@ export default function ORSimV5() {
   const [sorPriority, setSorPriority]   = useLocalStorage("or_sorPriority", "end");
 
   const [runs, setRuns] = useState(0);
+  const [aiSoon, setAiSoon] = useState(false);
+  const [orSoon, setOrSoon] = useState(false);
+  const [importSoon, setImportSoon] = useState(false);
   const [activeTab, setActiveTab] = useState("schedule");
   const [showHelp, setShowHelp] = useState(false);
 
@@ -1569,7 +1574,16 @@ export default function ORSimV5() {
           <div onClick={e => e.stopPropagation()} style={{ background:"#111118", border:"1px solid #1e1e2a", borderRadius:12, padding:"28px 32px", maxWidth:580, width:"100%", maxHeight:"80vh", overflowY:"auto", position:"relative" }}>
             <button onClick={() => setShowHelp(false)} style={{ position:"absolute", top:16, right:16, background:"transparent", border:"none", color:"#555", fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
             <div style={{ fontSize:10, letterSpacing:"0.15em", color:"#444", textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{t.helpModal.label}</div>
-            <h2 style={{ margin:"0 0 20px", fontSize:18, color:"#f0ede8" }}>{t.helpModal.title}</h2>
+            <h2 style={{ margin:"0 0 14px", fontSize:18, color:"#f0ede8" }}>{t.helpModal.title}</h2>
+            <div style={{ fontSize:12, color:"#888", lineHeight:1.8, marginBottom:20,
+              padding:"12px 16px", background:"#0d0d14", borderRadius:8,
+              borderLeft:"3px solid #e07b39" }}>
+              {t.helpModal.intro}
+            </div>
+            <div style={{ fontSize:10, letterSpacing:"0.08em", color:"#444", textTransform:"uppercase",
+              fontFamily:"'JetBrains Mono',monospace", marginBottom:12 }}>
+              {lang==="pl" ? "Jak używać" : "How to use"}
+            </div>
             {t.helpModal.steps.map(({ title, body }, i) => (
               <div key={i} style={{ marginBottom:18 }}>
                 <div style={{ display:"flex", gap:10, alignItems:"baseline", marginBottom:6 }}>
@@ -1847,7 +1861,7 @@ export default function ORSimV5() {
               marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
               ⚡ {lang==="pl" ? "Zakłócenia" : "Disruptions"}
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
               <div style={{ background: enableDelay ? "#ff9f4314" : "#111118",
                 border:`1px solid ${enableDelay ? "#ff9f4366" : "#1e1e2a"}`, borderRadius:8, padding:"14px 16px" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom: enableDelay ? 14 : 0,
@@ -1956,6 +1970,64 @@ export default function ORSimV5() {
                     onChange={e => f.set(parseInt(e.target.value))}
                     style={{ width:"100%", accentColor:f.color, cursor:"pointer" }} />
                 </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card" style={{ borderLeft:"3px solid #252530" }}>
+            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
+              marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
+              🚧 {lang==="pl" ? "Planowane funkcje" : "Coming soon"}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {[
+                {
+                  key: "or",
+                  icon: "🏥",
+                  label: lang==="pl" ? "Wiele sal operacyjnych" : "Multiple operating rooms",
+                  desc: lang==="pl" ? "2–3 sale · load balancing · wspólna pula chirurgów" : "2–3 ORs · load balancing · shared surgeon pool",
+                  clicked: orSoon,
+                  setClicked: setOrSoon,
+                },
+                {
+                  key: "ai",
+                  icon: "🤖",
+                  label: lang==="pl" ? "Import danych z AI" : "AI data import",
+                  desc: lang==="pl" ? "predykcja μ/σ z opisu operacji i historii lekarza" : "predict μ/σ from procedure description and surgeon history",
+                  clicked: aiSoon,
+                  setClicked: setAiSoon,
+                },
+                {
+                  key: "import",
+                  icon: "📋",
+                  label: lang==="pl" ? "Import planu zabiegów" : "Import surgery schedule",
+                  desc: lang==="pl" ? "wczytaj plan z CSV / Excel / HIS szpitala" : "load schedule from CSV / Excel / hospital HIS",
+                  clicked: importSoon,
+                  setClicked: setImportSoon,
+                },
+              ].map(({ key, icon, label, desc, clicked, setClicked }) => (
+                <button key={key}
+                  onClick={() => { setClicked(true); setTimeout(() => setClicked(false), 2500); }}
+                  style={{
+                    background: clicked ? "#1a1a28" : "#0d0d14",
+                    border: `1px solid ${clicked ? "#a78bfa66" : "#252530"}`,
+                    borderRadius:10, padding:"16px 18px", cursor:"pointer",
+                    textAlign:"left", transition:"all 0.2s",
+                    fontFamily:"'Syne',sans-serif",
+                  }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                    <span style={{ fontSize:18 }}>{icon}</span>
+                    <span style={{ fontSize:13, fontWeight:700,
+                      color: clicked ? "#a78bfa" : "#666",
+                      transition:"color 0.2s" }}>
+                      {clicked ? (lang==="pl" ? "⏳ Wkrótce..." : "⏳ Coming soon...") : label}
+                    </span>
+                  </div>
+                  <div style={{ fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace",
+                    lineHeight:1.6 }}>
+                    {clicked ? (lang==="pl" ? "pracujemy nad tym 🔧" : "we're working on it 🔧") : desc}
+                  </div>
+                </button>
               ))}
             </div>
           </div>
