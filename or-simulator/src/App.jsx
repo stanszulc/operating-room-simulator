@@ -46,8 +46,7 @@ const T = {
       schedule: "1. Plan",
       settings: "2. Ustawienia",
       params:   "3. Rozkłady",
-      monte:    "7. Monte Carlo",
-      test:     "8. Wynik test",
+      test:     "4. Wyniki",
     },
     schedule: {
       title: "Zbuduj plan operacyjny",
@@ -105,12 +104,10 @@ const T = {
       title: "Symulator Sali Operacyjnej",
       close: "Kliknij gdziekolwiek poza oknem aby zamknąć",
       steps: [
-        { title: "1. Plan dnia", body: "Ustaw liczbę operacji / dzień (3–10) i liczbę dni (1–5) suwakami w nagłówku. Przeciągnij procedury z lewej na sloty lub kliknij '🎲 Losuj plan'. Przypisz chirurga każdej operacji. Na dole możesz włączyć zakłócenia: opóźnienie startu pierwszej operacji i/lub nieplanowany przypadek z SOR." },
-        { title: "2. Parametry planowania", body: "Wybierz tryb wyznaczania planu: Średnia — błędne podejście, zawyżona przez długie operacje. P50 (mediana) — typowy czas, połowa operacji przekroczy plan. P80 — bezpieczniejszy, tylko 20% przekroczy plan. Własny — ręczna korekta per procedura." },
-        { title: "3. Rozkłady czasów realizacji", body: "Suwaki μ (mu) i σ (sigma) zmieniają kształt rozkładu log-normalnego per procedura. Czerwona linia = średnia (zawyżona), pomarańczowa = P50 (typowy), zielona = P80 (bezpieczny). Gdy zakłócenia są włączone — na dole pojawia się sekcja parametrów zakłóceń." },
-        { title: "4. Gantt (wyniki)", body: "Kliknij ▶ Uruchom w nagłówku lub w zakładce planu. Każde uruchomienie losuje nową realizację — plan pozostaje stały. Kolorowa ramka = plan, pełny pasek = rzeczywistość, czerwony = carry-over, przerywany = SOR. Opóźnienie startu widoczne jako ⏱ w nagłówku dnia." },
-        { title: "5. Błąd planowania", body: "Wykresy pokazują średni błąd planowania per chirurg i per procedura. Scatter plot — punkty powyżej przekątnej = operacja dłuższa niż plan." },
-        { title: "6. KPI", body: "Suma opóźnień, przekroczenia, efektywność i wykorzystanie sali liczone agregacyjnie przez wszystkie dni. Carry-over (Day+1) — łączna liczba operacji przesuniętych na następny dzień. Ustawienia są automatycznie zapamiętywane — odświeżenie strony nie kasuje planu." },
+        { title: "1. Plan operacyjny", body: "Ustaw liczbę dni (suwak w nagłówku, max 30) i liczbę operacji / dzień (suwak w zakładce). Przeciągnij procedury z lewej puli na sloty lub kliknij '🎲 Losuj plan'. Każdemu slotowi przypisz chirurga (A / B / C) — chirurdzy różnią się współczynnikiem wydajności. Przycisk 🏥 Demo wczytuje gotowy plan demonstracyjny 7 dni × 5 ops z włączonym SOR. Przycisk 🔧 Optymalizuj sortuje operacje po przewidywalności (CV) i ustawia plan Robust. Zakłócenia (dolna sekcja): ⏱ opóźnienie startu pierwszej operacji dnia — możesz ustawić prawdopodobieństwo startu na czas i średni czas opóźnienia. 🚨 SOR — nieplanowany przypadek z izby przyjęć, losowany z rozkładu Poissona (λ = śr. liczba / dzień). Parametry SOR: czas trwania, priorytet (wyprzedza planowe vs na koniec dnia)." },
+        { title: "2. Ustawienia strategii", body: "Tryb planu bazowego — jak wyznaczamy czas planowany per operacja: Średnia (błąd — log-normal ma długi ogon, średnia > mediana), P50 (mediana — typowy czas, 50% operacji przekroczy plan), P80 (bezpieczny — tylko 20% przekroczy plan), Własny (ręczna korekta offset per procedura). MIT Robust Scheduling (Denton et al.) — parametr Γ (Gamma) steruje budżetem buforów: budget = min(Γ × max_deviation, dostępny_czas). Im wyższe Γ, tym więcej czasu rezerwujesz na zmienne operacje — mniejsze ryzyko carry-over, ale mniejsza przepustowość. Wykres pod suwakiem pokazuje bufor per operacja proporcjonalny do jej zmienności (P80−P50). Rolling Horizon Optimizer — okno look-ahead: po zaplanowaniu dnia sprawdza czy zostało wolne miejsce i pożycza najkrótszą operację z kolejnych N dni. Zmiana okna zmienia agresywność optymalizacji." },
+        { title: "3. Rozkłady czasów", body: "Każda procedura ma rozkład log-normalny z parametrami μ (mu) i σ (sigma). μ przesuwa całą krzywą (dłuższy / krótszy mediana), σ steruje szerokością ogona (większe σ = więcej ekstremalnych przypadków). Czerwona linia = średnia (zawyżona przez ogon), pomarańczowa = P50 (mediana, typowy czas), zielona = P80 (czas bezpieczny). Pod wykresem tabela P50 / P80 / średnia per chirurg × procedura — chirurg B jest 10% wolniejszy, A 8% szybszy niż baseline C." },
+        { title: "4. Wyniki", body: "Główna zakładka — otwiera się automatycznie po kliknięciu ▶ Uruchom symulację. Układ od góry: (1) Panel Monte Carlo — suwak iteracji i przycisk ▶ Uruchom analizę. Po uruchomieniu MC tabela KPI pokazuje wartości uśrednione z setek przebiegów zamiast jednego losowania. (2) Tabela KPI — porównuje 5 strategii (Średnia / P50 / P80 / Robust / Rolling Horizon) na tych samych losowaniach — uczciwe porównanie. Zielona komórka = najlepsza wartość w wierszu. (3) Histogramy rozkładu godziny końca dnia per strategia — im krzywa bardziej przesunięta w lewo, tym lepsza strategia. Pod każdym histogramem kafelki: min op./dzień, śr. koniec, śr. nadgodziny, carry-over/dzień, OTCR%. (4) Przełącznik strategii — zmienia prawą kolumnę Ganttów. (5) Gantty — lewy = plan bazowy, prawy = wybrana strategia. Kolorowa ramka = plan, pełny pasek = rzeczywistość, czerwony = carry-over ↩, przerywany = SOR 🚨, ⏩ zielony = przyspieszone przez RH, ⏱ = opóźnienie startu. (6) Tabela szczegółów operacji — każda operacja z dokładnymi czasami, odchyleniem od planu i statusem carry-over." },
       ],
     },
   },
@@ -143,8 +140,7 @@ const T = {
       schedule: "1. Plan",
       settings: "2. Settings",
       params:   "3. Distributions",
-      monte:    "7. Monte Carlo",
-      test:     "8. Results test",
+      test:     "4. Results",
     },
     schedule: {
       title: "Build the operating schedule",
@@ -202,12 +198,10 @@ const T = {
       title: "Operating Room Simulator",
       close: "Click anywhere outside to close",
       steps: [
-        { title: "1. Schedule", body: "Set ops per day (3–10) and number of days (1–5) using the header sliders. Drag procedure tiles onto slots or click '🎲 Randomize'. Assign a surgeon to each slot. At the bottom you can enable disruptions: first case start delay and/or unplanned emergency (SOR)." },
-        { title: "2. Planning parameters", body: "Choose planning mode: Mean — incorrect approach, inflated by long ops. P50 (median) — typical time, half of ops will exceed plan. P80 — safer, only 20% will exceed. Custom — manual offset per procedure." },
-        { title: "3. Distribution of realization times", body: "μ (mu) and σ (sigma) sliders change the log-normal distribution shape per procedure. Red = mean (inflated), orange = P50 (typical), green = P80 (safe). When disruptions are enabled, a parameter section appears below." },
-        { title: "4. Gantt (results)", body: "Click ▶ Run in the header or schedule tab. Each run draws a new realization — the plan stays fixed. Colored outline = plan, solid bar = actual, red = carry-over, dashed = SOR emergency. Start delay shown as ⏱ in the day header." },
-        { title: "5. Planning bias", body: "Charts show average planning error per surgeon and procedure. Scatter plot — points above the diagonal = operation longer than planned." },
-        { title: "6. KPIs", body: "Total delay, overruns, efficiency and utilization are aggregated across all days. Carry-over (Day+1) — total ops moved to the next day. All settings are automatically saved — refreshing the page will not reset your plan." },
+        { title: "1. Operating schedule", body: "Set the number of days (header slider, up to 30) and ops per day (tab slider). Drag procedure tiles from the left pool onto slots or click '🎲 Randomize'. Assign a surgeon (A / B / C) to each slot — surgeons have different efficiency multipliers. The 🏥 Demo button loads a 7-day × 5-ops demo plan with SOR enabled. 🔧 Optimize sorts ops by predictability (CV) and sets the Robust plan. Disruptions (bottom section): ⏱ first case start delay — set the on-time probability and mean delay. 🚨 SOR — unplanned emergency cases drawn from a Poisson distribution (λ = avg cases/day). SOR parameters: duration, priority (preempts scheduled ops vs added at end of day)." },
+        { title: "2. Strategy settings", body: "Base plan mode — how planned duration is set per operation: Mean (incorrect — log-normal has a long right tail, mean > median), P50 (median — typical time, 50% of ops will exceed plan), P80 (safe — only 20% will exceed), Custom (manual offset per procedure). MIT Robust Scheduling (Denton et al.) — Γ (Gamma) controls the buffer budget: budget = min(Γ × max_deviation, available_time). Higher Γ = more buffer for variable ops = lower carry-over risk but lower throughput. The chart below the slider shows buffer per operation proportional to its variability (P80−P50). Rolling Horizon Optimizer — look-ahead window: after scheduling each day it checks remaining capacity and borrows the shortest op from the next N days. Larger window = more aggressive optimization." },
+        { title: "3. Duration distributions", body: "Each procedure follows a log-normal distribution with parameters μ (mu) and σ (sigma). μ shifts the whole curve (longer/shorter median), σ controls tail width (higher σ = more extreme cases). Red line = mean (inflated by the tail), orange = P50 (median, typical time), green = P80 (safe time). The table below shows P50 / P80 / mean per surgeon × procedure — surgeon B is 10% slower, A is 8% faster than baseline C." },
+        { title: "4. Results", body: "Main tab — opens automatically after clicking ▶ Run simulation. Layout from top: (1) Monte Carlo panel — iterations slider and ▶ Run analysis button. When MC is run, the KPI table shows values averaged across hundreds of runs instead of a single draw. (2) KPI table — compares 5 strategies (Mean / P50 / P80 / Robust / Rolling Horizon) on the same random draws — a fair comparison. Green cell = best value in row. (3) End-of-day distribution histograms per strategy — the more left-shifted, the better. Below each histogram: op. min/day, avg end, avg overtime, carry-over/day, OTCR%. (4) Strategy switcher — changes the right Gantt column. (5) Gantts — left = base plan, right = selected strategy. Colored outline = plan, solid bar = actual, red = carry-over ↩, dashed = SOR 🚨, ⏩ green = accelerated by RH, ⏱ = start delay. (6) Operation detail table — each operation with exact times, plan deviation and carry-over status." },
       ],
     },
   },
@@ -2020,203 +2014,7 @@ export default function ORSimV5() {
         </div>
       )}
 
-{activeTab === "monte" && (
-        <div style={{ display:"grid", gap:14 }}>
-          <div className="card">
-            <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-              marginBottom:14, fontFamily:"'JetBrains Mono',monospace" }}>
-              {t.monte.title}
-            </div>
-            <div style={{ display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10, flex:1, minWidth:260 }}>
-                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.monte.iterLabel}:</span>
-                <input type="range" min={100} max={1000} step={100} value={mcIterations}
-                  onChange={e => setMcIterations(parseInt(e.target.value))}
-                  style={{ flex:1, accentColor:"#a78bfa", cursor:"pointer" }} />
-                <span style={{ fontSize:14, fontWeight:700, color:"#a78bfa", fontFamily:"'JetBrains Mono',monospace", minWidth:40 }}>{mcIterations}</span>
-              </div>
-              <button onClick={runMonteCarlo} disabled={mcRunning} style={{
-                padding:"10px 28px", background: mcRunning ? "#1a1a24" : "linear-gradient(135deg,#a78bfa,#7c5cdb)",
-                color: mcRunning ? "#555" : "#fff", border:"none", borderRadius:8,
-                fontSize:13, fontWeight:700, cursor: mcRunning ? "not-allowed" : "pointer", fontFamily:"'Syne',sans-serif",
-              }}>
-                {mcRunning ? t.monte.running : t.monte.runBtn}
-              </button>
-              <span style={{ fontSize:10, color:"#333", fontFamily:"'JetBrains Mono',monospace" }}>{t.monte.hint}</span>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:14,
-              borderTop:"1px solid #1e1e2a", paddingTop:14 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{lang==="pl" ? "Przychód sali (zł/min):" : "Revenue (zł/min):"}</span>
-                <input type="range" min={50} max={300} step={10} value={revenuePerMin}
-                  onChange={e => setRevenuePerMin(parseInt(e.target.value))}
-                  style={{ flex:1, accentColor:"#6bcb77", cursor:"pointer" }} />
-                <span style={{ fontSize:13, fontWeight:700, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace", minWidth:48 }}>{revenuePerMin} zł</span>
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{lang==="pl" ? "Koszt nadgodzin (zł/h):" : "Overtime cost (zł/h):"}</span>
-                <input type="range" min={100} max={2000} step={50} value={Math.round(overtimeCostPerMin * 60)}
-                  onChange={e => setOvertimeCostPerMin(parseInt(e.target.value) / 60)}
-                  style={{ flex:1, accentColor:"#ff6b6b", cursor:"pointer" }} />
-                <span style={{ fontSize:13, fontWeight:700, color:"#ff6b6b", fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{overtimeCostPerMin * 60} zł</span>
-              </div>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{lang==="pl" ? "Koszt dnia sali (tys. zł):" : "OR day cost (k zł):"}</span>
-                <input type="range" min={50} max={300} step={10} value={dayOperatingCost}
-                  onChange={e => setDayOperatingCost(parseInt(e.target.value))}
-                  style={{ flex:1, accentColor:"#a78bfa", cursor:"pointer" }} />
-                <span style={{ fontSize:13, fontWeight:700, color:"#a78bfa", fontFamily:"'JetBrains Mono',monospace", minWidth:56 }}>{dayOperatingCost} tys.</span>
-              </div>
-            </div>
-          </div>
-
-          {mcRunning && (
-            <div className="card" style={{ textAlign:"center", padding:"32px", color:"#555", fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
-              ⏳ {lang==="pl" ? `Liczę ${mcIterations} iteracji × 4 strategie...` : `Computing ${mcIterations} iterations × 4 strategies...`}
-            </div>
-          )}
-
-          {mcResults && !mcRunning && (() => {
-            const modeKeys = Object.keys(mcResults);
-            const COLORS = { mean:"#ff6b6b", p50:"#e07b39", p80:"#6bcb77", custom:"#a78bfa", robust:"#00d4ff" };
-
-            return (
-              <>
-                <div className="card">
-                  <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
-                    marginBottom:12, fontFamily:"'JetBrains Mono',monospace" }}>
-                    {t.monte.summaryTitle} · {mcIterations} {t.monte.iterations}
-                    <span style={{ fontSize:9, color:"#555", marginLeft:8, fontFamily:"'JetBrains Mono',monospace" }}>
-                      {numDays}d · {overtimeLimit}' OT{enableSor ? ` · SOR λ=${sorLambda}` : " · SOR=0"}
-                      {enableDelay ? ` · delay P=${Math.round((1-delayOnTime)*100)}%` : " · delay=0"}
-                      {" · "}Γ={robustLevel.toFixed(1)}
-                    </span>
-                  </div>
-                  <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                    <thead><tr>
-                      {(lang==="pl"
-                        ? ["Strategia","% dni na czas","Nadgodz. śr. (min/dzień)","Carry-over śr. (szt/dzień)","OTCR% (trafność planu)","Dni do końca planu","Plan (min łącznie)","Realizacja (min łącznie)","Efektywność sali","Wykorzystanie sali","Wynik śr./dzień (zł)","Najgorszy dzień"]
-                        : ["Strategy","% days on time","Avg overtime (min/day)","Avg carry-over (ops/day)","OTCR% (schedule adherence)","Days to complete","Planned (min total)","Actual (min total)","Room efficiency","Room utilization","Avg result/day (zł)","Worst day"]
-                      ).map(h=><th key={h}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>
-                      {modeKeys.map(mode => {
-                        const r = mcResults[mode];
-                        const color = COLORS[mode];
-                        const pctOnTime = 100 - r.overtimeRate;
-                        return (
-                          <tr key={mode}>
-                            <td><span style={{ color, fontWeight:700, fontSize:13 }}>{t.monte.modes[mode]}</span></td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600, color: pctOnTime>=80?"#6bcb77":pctOnTime>=50?"#e0c039":"#ff6b6b" }}>{pctOnTime}%</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.avgOvertimeMin>30?"#ff6b6b":r.avgOvertimeMin>0?"#ff9f43":"#6bcb77" }}>{r.avgOvertimeMin}'</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.avgCarryOver>1?"#ff2244":r.avgCarryOver>0?"#ff9f43":"#6bcb77" }}>{r.avgCarryOver.toFixed(1)}</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b", fontSize:13 }}>{r.otcr}%</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:"#00d4ff", fontSize:13 }}>{r.avgDaysToFinish}<span style={{ fontSize:9, color:"#555", marginLeft:4 }}>({r.minDaysToFinish}–{r.maxDaysToFinish})</span></td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#e07b39" }}>{r.totalPlanned}'</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.totalActual >= r.totalPlanned ? "#6bcb77" : "#ff9f43" }}>{r.totalActual}'</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.avgEfficiency>=85?"#6bcb77":r.avgEfficiency>=70?"#e0c039":"#ff6b6b" }}>{r.avgEfficiency}%</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color: r.avgUtilization>=75?"#6bcb77":r.avgUtilization>=60?"#e0c039":"#ff6b6b" }}>{r.avgUtilization}%</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:"#6bcb77", fontSize:13 }}>{r.avgFinancial.toLocaleString()} zł</td>
-                            <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#ff6b6b" }}>{minToTime(r.worstEnd)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {(() => {
-                  const modeVals = modeKeys.map(m => mcResults[m].overtimeRate);
-                  const minOT = Math.min(...modeVals);
-                  const maxOT = Math.max(...modeVals);
-                  const diff = maxOT - minOT;
-                  const allHigh = modeVals.every(v => v > 70);
-                  const allLow  = modeVals.every(v => v < 10);
-                  if (allHigh) return (
-                    <div style={{ background:"#ff224410", border:"1px solid #ff224433", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#ff9f43", fontFamily:"'JetBrains Mono',monospace" }}>
-                      ⚠ {lang==="pl" ? "Plan jest zbyt ciasny — wszystkie strategie regularnie przepełniają salę. Zmniejsz liczbę operacji lub zwiększ limit nadgodzin aby zobaczyć różnicę między strategiami." : "Plan is too tight — all strategies regularly overflow. Reduce the number of operations or increase the overtime limit to see differences between strategies."}
-                    </div>
-                  );
-                  if (allLow && diff < 5) return (
-                    <div style={{ background:"#6bcb7710", border:"1px solid #6bcb7733", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace" }}>
-                      ✓ {lang==="pl" ? "Plan ma duży zapas — wszystkie strategie mieszczą się w dniu. Zwiększ liczbę operacji aby zobaczyć różnicę między strategiami." : "Plan has a large margin — all strategies fit within the day. Increase operations to see differences between strategies."}
-                    </div>
-                  );
-                  if (diff < 5) return (
-                    <div style={{ background:"#e0c03910", border:"1px solid #e0c03933", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#e0c039", fontFamily:"'JetBrains Mono',monospace" }}>
-                      ℹ {lang==="pl" ? `Różnica między strategiami wynosi tylko ${diff}%. Spróbuj zwiększyć liczbę operacji lub zmienić parametry rozkładu aby uzyskać wyraźniejszy efekt.` : `Difference between strategies is only ${diff}%. Try increasing operations or changing distribution parameters for a clearer effect.`}
-                    </div>
-                  );
-                  return null;
-                })()}
-
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12 }}>
-                  {modeKeys.map(mode => {
-                    const color = COLORS[mode];
-                    const r = mcResults[mode];
-                    const modeBins = {};
-                    for (let m = START; m <= END + 120; m += 15) modeBins[m] = { time: minToTime(m), count: 0 };
-                    r.endTimes.forEach(et => {
-                      const bucket = Math.floor(et / 15) * 15;
-                      if (!modeBins[bucket]) modeBins[bucket] = { time: minToTime(bucket), count: 0 };
-                      modeBins[bucket].count += 1;
-                    });
-                    const modeHistData = Object.values(modeBins).filter(b => b.count > 0);
-                    const onTime = r.endTimes.filter(e => e <= END).length;
-                    const pctOnTime = Math.round(onTime / r.endTimes.length * 100);
-                    return (
-                      <div key={mode} className="card" style={{ borderTop:`2px solid ${color}` }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
-                          <span style={{ fontSize:13, fontWeight:700, color }}>{t.monte.modes[mode]}</span>
-                          <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace", color: pctOnTime >= 80 ? "#6bcb77" : pctOnTime >= 50 ? "#e0c039" : "#ff6b6b" }}>{pctOnTime}% {lang==="pl" ? "na czas" : "on time"}</span>
-                        </div>
-                        <ResponsiveContainer width="100%" height={160}>
-                          <BarChart data={modeHistData} margin={{ top:4, right:4, bottom:16, left:-15 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
-                            <XAxis dataKey="time" tick={{ fontSize:8, fill:"#555" }} interval={2}
-                              label={{ value: lang==="pl"?"Koniec":"End", position:"insideBottom", offset:-8, fill:"#444", fontSize:9 }} />
-                            <YAxis tick={{ fontSize:8, fill:"#555" }} />
-                            <ReferenceLine x={minToTime(END)} stroke="#ff6b6b" strokeDasharray="3 2" strokeWidth={1.5} />
-                            <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }}
-                              formatter={v => [v, lang==="pl" ? "iteracji" : "iterations"]} />
-                            <Bar dataKey="count" fill={color} opacity={0.8} radius={[2,2,0,0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginTop:8 }}>
-                          {[
-                            { val:`${r.avgOpsMin}'`, lbl:lang==="pl"?"min op./dzień":"op. min/day", color:"#4a9eff" },
-                            { val:minToTime(r.avgEnd), lbl:lang==="pl"?"śr. koniec":"avg end", color },
-                            { val:`${r.avgOvertimeMin}'`, lbl:lang==="pl"?"śr. nadgodziny":"avg overtime", color: r.avgOvertimeMin > 0 ? "#ff9f43" : "#6bcb77" },
-                            { val:r.avgCarryOver.toFixed(1), lbl:lang==="pl"?"śr. carry-over/dzień":"avg carry-over/day", color: r.avgCarryOver > 0 ? "#ff2244" : "#6bcb77" },
-                            { val:`${r.otcr}%`, lbl:"OTCR", color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b", bold:true },
-                          ].map(k => (
-                            <div key={k.lbl} style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
-                              <div style={{ fontSize:16, fontWeight: k.bold ? 700 : 600, color:k.color, fontFamily:"'JetBrains Mono',monospace" }}>{k.val}</div>
-                              <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{k.lbl}</div>
-                            </div>
-                          ))}
-                          <div style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px", gridColumn:"1/-1" }}>
-                            <div style={{ fontSize:16, fontWeight:700, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace" }}>{r.avgFinancial.toLocaleString()} zł</div>
-                            <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{lang==="pl" ? "śr. wynik/dzień" : "avg result/day"}</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            );
-          })()}
-
-          {!mcResults && !mcRunning && (
-            <div className="card" style={{ textAlign:"center", padding:"32px", color:"#333", fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
-              {lang==="pl" ? `Kliknij "▶ Uruchom analizę" aby porównać 4 strategie planowania na ${mcIterations} losowych realizacjach` : `Click "▶ Run analysis" to compare 4 planning strategies across ${mcIterations} random realizations`}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === "test" && (() => {
+{activeTab === "test" && (() => {
         const planColor = MODE_CONFIG[planMode].color;
         const optDays = daysOptimized ? daysOptimized.length : numDays;
         const saved = Math.max(0, numDays - optDays);
@@ -2263,6 +2061,39 @@ export default function ORSimV5() {
 
         return (
           <div style={{ display:"grid", gap:12 }}>
+            <div className="card" style={{ borderLeft:"3px solid #a78bfa" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+                <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#a78bfa", textTransform:"uppercase",
+                  fontFamily:"'JetBrains Mono',monospace", fontWeight:700, whiteSpace:"nowrap" }}>
+                  Monte Carlo
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:10, flex:1, minWidth:200 }}>
+                  <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.monte.iterLabel}:</span>
+                  <input type="range" min={100} max={1000} step={100} value={mcIterations}
+                    onChange={e => setMcIterations(parseInt(e.target.value))}
+                    style={{ flex:1, accentColor:"#a78bfa", cursor:"pointer" }} />
+                  <span style={{ fontSize:13, fontWeight:700, color:"#a78bfa",
+                    fontFamily:"'JetBrains Mono',monospace", minWidth:40 }}>{mcIterations}</span>
+                </div>
+                <button onClick={runMonteCarlo} disabled={mcRunning} style={{
+                  padding:"8px 20px", background: mcRunning ? "#1a1a24" : "linear-gradient(135deg,#a78bfa,#7c5cdb)",
+                  color: mcRunning ? "#555" : "#fff", border:"none", borderRadius:8,
+                  fontSize:12, fontWeight:700, cursor: mcRunning ? "not-allowed" : "pointer",
+                  fontFamily:"'Syne',sans-serif", whiteSpace:"nowrap",
+                }}>
+                  {mcRunning ? t.monte.running : t.monte.runBtn}
+                </button>
+                {mcResults && !mcRunning && (
+                  <span style={{ fontSize:10, color:"#a78bfa", fontFamily:"'JetBrains Mono',monospace" }}>
+                    ✓ {mcRuns} {t.monte.iterations}
+                  </span>
+                )}
+                <span style={{ fontSize:10, color:"#333", fontFamily:"'JetBrains Mono',monospace" }}>
+                  {t.monte.hint}
+                </span>
+              </div>
+            </div>
+
             <div className="card">
               <div style={{ fontSize:10, letterSpacing:"0.1em", color:"#444", textTransform:"uppercase",
                 marginBottom:8, fontFamily:"'JetBrains Mono',monospace" }}>
@@ -2325,6 +2156,93 @@ export default function ORSimV5() {
                 </table>
               </div>
             </div>
+
+
+            {mcResults && !mcRunning && (() => {
+              const modeKeys = Object.keys(mcResults);
+              const COLORS = { mean:"#ff6b6b", p50:"#e07b39", p80:"#6bcb77", custom:"#a78bfa", robust:"#00d4ff" };
+
+              // Komunikat diagnostyczny
+              const modeVals = modeKeys.map(m => mcResults[m].overtimeRate);
+              const minOT = Math.min(...modeVals);
+              const maxOT = Math.max(...modeVals);
+              const diff = maxOT - minOT;
+              const allHigh = modeVals.every(v => v > 70);
+              const allLow  = modeVals.every(v => v < 10);
+
+              return (
+                <>
+                  {allHigh && (
+                    <div style={{ background:"#ff224410", border:"1px solid #ff224433", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#ff9f43", fontFamily:"'JetBrains Mono',monospace" }}>
+                      ⚠ {lang==="pl" ? "Plan jest zbyt ciasny — wszystkie strategie regularnie przepełniają salę. Zmniejsz liczbę operacji lub zwiększ limit nadgodzin." : "Plan is too tight — all strategies regularly overflow. Reduce operations or increase overtime limit."}
+                    </div>
+                  )}
+                  {!allHigh && allLow && diff < 5 && (
+                    <div style={{ background:"#6bcb7710", border:"1px solid #6bcb7733", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#6bcb77", fontFamily:"'JetBrains Mono',monospace" }}>
+                      ✓ {lang==="pl" ? "Plan ma duży zapas — wszystkie strategie mieszczą się w dniu. Zwiększ liczbę operacji aby zobaczyć różnicę." : "Plan has a large margin — all strategies fit. Increase operations to see differences."}
+                    </div>
+                  )}
+                  {!allHigh && diff < 5 && !(allLow && diff < 5) && (
+                    <div style={{ background:"#e0c03910", border:"1px solid #e0c03933", borderRadius:8, padding:"12px 16px", fontSize:11, color:"#e0c039", fontFamily:"'JetBrains Mono',monospace" }}>
+                      ℹ {lang==="pl" ? `Różnica między strategiami wynosi tylko ${diff}%. Spróbuj zwiększyć liczbę operacji lub zmienić parametry rozkładu.` : `Difference between strategies is only ${diff}%. Try increasing operations or changing distribution parameters.`}
+                    </div>
+                  )}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:12 }}>
+                    {modeKeys.map(mode => {
+                      const color = COLORS[mode];
+                      const r = mcResults[mode];
+                      const modeBins = {};
+                      for (let m = START; m <= END + 120; m += 15) modeBins[m] = { time: minToTime(m), count: 0 };
+                      r.endTimes.forEach(et => {
+                        const bucket = Math.floor(et / 15) * 15;
+                        if (!modeBins[bucket]) modeBins[bucket] = { time: minToTime(bucket), count: 0 };
+                        modeBins[bucket].count += 1;
+                      });
+                      const modeHistData = Object.values(modeBins).filter(b => b.count > 0);
+                      const onTime = r.endTimes.filter(e => e <= END).length;
+                      const pctOnTime = Math.round(onTime / r.endTimes.length * 100);
+                      return (
+                        <div key={mode} className="card" style={{ borderTop:`2px solid ${color}` }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:8 }}>
+                            <span style={{ fontSize:13, fontWeight:700, color }}>{t.monte.modes[mode]}</span>
+                            <span style={{ fontSize:11, fontFamily:"'JetBrains Mono',monospace",
+                              color: pctOnTime >= 80 ? "#6bcb77" : pctOnTime >= 50 ? "#e0c039" : "#ff6b6b" }}>
+                              {pctOnTime}% {lang==="pl" ? "na czas" : "on time"}
+                            </span>
+                          </div>
+                          <ResponsiveContainer width="100%" height={150}>
+                            <BarChart data={modeHistData} margin={{ top:4, right:4, bottom:16, left:-15 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1a1a28" />
+                              <XAxis dataKey="time" tick={{ fontSize:8, fill:"#555" }} interval={2}
+                                label={{ value: lang==="pl"?"Koniec":"End", position:"insideBottom", offset:-8, fill:"#444", fontSize:9 }} />
+                              <YAxis tick={{ fontSize:8, fill:"#555" }} />
+                              <ReferenceLine x={minToTime(END)} stroke="#ff6b6b" strokeDasharray="3 2" strokeWidth={1.5} />
+                              <Tooltip contentStyle={{ background:"#1a1a28", border:`1px solid ${color}40`, borderRadius:6, fontSize:10 }}
+                                formatter={v => [v, lang==="pl" ? "iteracji" : "iterations"]} />
+                              <Bar dataKey="count" fill={color} opacity={0.8} radius={[2,2,0,0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, marginTop:8 }}>
+                            {[
+                              { val:`${r.avgOpsMin}'`, lbl:lang==="pl"?"min op./dzień":"op. min/day", color:"#4a9eff" },
+                              { val:minToTime(r.avgEnd), lbl:lang==="pl"?"śr. koniec":"avg end", color },
+                              { val:`${r.avgOvertimeMin}'`, lbl:lang==="pl"?"śr. nadgodziny":"avg overtime", color: r.avgOvertimeMin > 0 ? "#ff9f43" : "#6bcb77" },
+                              { val:r.avgCarryOver.toFixed(1), lbl:lang==="pl"?"śr. carry-over/dzień":"avg carry-over/day", color: r.avgCarryOver > 0 ? "#ff2244" : "#6bcb77" },
+                              { val:`${r.otcr}%`, lbl:"OTCR", color: r.otcr>=70?"#6bcb77":r.otcr>=50?"#e0c039":"#ff6b6b", bold:true },
+                            ].map(k => (
+                              <div key={k.lbl} style={{ background:"#0d0d14", borderRadius:6, padding:"6px 10px" }}>
+                                <div style={{ fontSize:16, fontWeight: k.bold ? 700 : 600, color:k.color, fontFamily:"'JetBrains Mono',monospace" }}>{k.val}</div>
+                                <div style={{ fontSize:9, color:"#555", marginTop:2 }}>{k.lbl}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
 
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               {STRATS.map(s => (
