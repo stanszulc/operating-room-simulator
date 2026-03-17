@@ -19,7 +19,7 @@ const SURGEON_SKILL = { A: 0.92, B: 1.10, C: 1.00 };
 const T = {
   pl: {
     subtitle: "OR · Symulator Sali — v5",
-    title: "Symulacja Sali Operacyjnej",
+    title: "Symulacja Sali Operacyjnej — TEST",
     planMode: "Tryb planu",
     run: "run",
     help: "? Instrukcja",
@@ -119,7 +119,7 @@ const T = {
   },
   en: {
     subtitle: "OR · Operating Room Simulator — v5",
-    title: "Operating Room Simulator",
+    title: "Operating Room Simulator — TEST",
     planMode: "Plan mode",
     run: "run",
     help: "? Help",
@@ -1708,31 +1708,148 @@ export default function ORSimV5() {
                   label={cfg.label} desc={cfg.desc} color={cfg.color} />
               ))}
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16,
-              background:"#0d0d1a", borderRadius:8, padding:"12px 16px", border:"1px solid #00d4ff33" }}>
-              <div>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                  <span style={{ fontSize:11, color:"#00d4ff" }}>🛡 Γ (Gamma)</span>
-                  <span style={{ fontSize:13, fontWeight:700, color:"#00d4ff", fontFamily:"'JetBrains Mono',monospace" }}>{robustLevel.toFixed(1)}</span>
+            <div style={{ background:"#0d0d1a", borderRadius:8, padding:"14px 16px", border:"1px solid #00d4ff33" }}>
+              {/* Header MIT Robust */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
+                <div>
+                  <span style={{ fontSize:11, color:"#00d4ff", fontWeight:700 }}>MIT Robust Scheduling</span>
+                  <span style={{ fontSize:10, color:"#555", marginLeft:8, fontFamily:"'JetBrains Mono',monospace" }}>Denton et al. · Box Uncertainty Set</span>
                 </div>
-                <input type="range" min={0.5} max={slots.filter(s=>s.proc).length || 6} step={0.5}
-                  value={robustLevel} onChange={e => setRobustLevel(parseFloat(e.target.value))}
-                  style={{ width:"100%", accentColor:"#00d4ff", cursor:"pointer" }} />
-                <div style={{ fontSize:10, color:"#555", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
-                  {lang==="pl" ? `Chronisz ${robustLevel.toFixed(1)} ops od opóźnienia` : `Protecting ${robustLevel.toFixed(1)} ops from delay`}
-                </div>
+                <span style={{ fontSize:18, fontWeight:700, color:"#00d4ff", fontFamily:"'JetBrains Mono',monospace" }}>Γ = {robustLevel.toFixed(1)}</span>
               </div>
-              <div>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                  <span style={{ fontSize:11, color:"#00d4ff" }}>📅 {lang==="pl" ? "Okno planowania" : "Planning window"}</span>
-                  <span style={{ fontSize:13, fontWeight:700, color:"#00d4ff", fontFamily:"'JetBrains Mono',monospace" }}>{planningWindow} {lang==="pl"?"dni":"days"}</span>
+              {/* Wzór */}
+              <div style={{ fontSize:10, color:"#555", fontFamily:"'JetBrains Mono',monospace", marginBottom:10,
+                background:"#060610", borderRadius:6, padding:"6px 10px", lineHeight:1.8 }}>
+                <span style={{ color:"#00d4ff88" }}>budget</span> = min(<span style={{ color:"#00d4ff" }}>Γ</span> × max_deviation, available_time)<br/>
+                <span style={{ color:"#00d4ff88" }}>deviation</span> = P80 − P50 <span style={{ color:"#333" }}>per operacja</span><br/>
+                <span style={{ color:"#00d4ff88" }}>allocation</span> = budget × (deviation_i / Σdeviation)
+              </div>
+              {/* Suwak */}
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                <span style={{ fontSize:10, color:"#555", whiteSpace:"nowrap" }}>Γ =</span>
+                <input type="range" min={0} max={slots.filter(s=>s.proc).length || 6} step={0.5}
+                  value={robustLevel} onChange={e => setRobustLevel(parseFloat(e.target.value))}
+                  style={{ flex:1, accentColor:"#00d4ff", cursor:"pointer" }} />
+                <span style={{ fontSize:10, color:"#555", whiteSpace:"nowrap", fontFamily:"'JetBrains Mono',monospace" }}>
+                  {lang==="pl" ? `chroni ${robustLevel.toFixed(1)} ops` : `protects ${robustLevel.toFixed(1)} ops`}
+                </span>
+              </div>
+              {/* Wykres buforów per operacja */}
+              {(() => {
+                const validSlots = slots.filter(s => s.proc !== null);
+                if (validSlots.length === 0) return null;
+                const ops = validSlots.map(op => {
+                  const { mu, sigma } = procParams[op.proc] ?? { mu: 4.06, sigma: 0.28 };
+                  const p50 = Math.round(Math.exp(mu));
+                  const p80 = Math.round(Math.exp(mu + 0.842 * sigma));
+                  return { proc: op.proc, chir: op.chir, p50, deviation: Math.max(0, p80 - p50) };
+                });
+                const maxDev = Math.max(...ops.map(o => o.deviation), 1);
+                const totalDev = ops.reduce((a, o) => a + o.deviation, 0) || 1;
+                const availBuffer = Math.max(0, (END - START + overtimeLimit) - ops.reduce((a,o)=>a+o.p50,0) - 15*(ops.length-1));
+                const totalBudget = Math.min(robustLevel * maxDev, availBuffer);
+                const maxBar = Math.max(...ops.map(o => o.p50 + Math.round(o.deviation / totalDev * totalBudget)), 1);
+                return (
+                  <div>
+                    <div style={{ fontSize:9, color:"#333", fontFamily:"'JetBrains Mono',monospace",
+                      textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>
+                      {lang==="pl" ? "Bufor Γ per operacja" : "Γ buffer per operation"}
+                      <span style={{ color:"#555", marginLeft:8 }}>
+                        budget={Math.round(totalBudget)}' · available={availBuffer}'
+                      </span>
+                    </div>
+                    {ops.map((op, i) => {
+                      const buffer = Math.round(op.deviation / totalDev * totalBudget);
+                      const color = PROC_COLORS[op.proc] ?? "#888";
+                      const barW = (op.p50 / maxBar) * 100;
+                      const bufW = (buffer / maxBar) * 100;
+                      return (
+                        <div key={i} style={{ display:"grid", gridTemplateColumns:"120px 1fr 48px", alignItems:"center", gap:6, marginBottom:4 }}>
+                          <div style={{ fontSize:9, color:`${color}cc`, fontFamily:"'JetBrains Mono',monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            <span style={{ color:SURGEON_COLORS[op.chir], fontWeight:700 }}>{op.chir}</span> {op.proc}
+                          </div>
+                          <div style={{ position:"relative", height:14, background:"#111118", borderRadius:3, overflow:"hidden" }}>
+                            <div style={{ position:"absolute", left:0, top:0, height:"100%", width:`${barW}%`,
+                              background:`${color}55`, borderRadius:3 }} />
+                            <div style={{ position:"absolute", left:`${barW}%`, top:0, height:"100%", width:`${bufW}%`,
+                              background:"#00d4ff55", borderRadius:3,
+                              borderLeft: buffer > 0 ? "1px solid #00d4ff" : "none" }} />
+                          </div>
+                          <div style={{ fontSize:9, fontFamily:"'JetBrains Mono',monospace", textAlign:"right",
+                            color: buffer > 0 ? "#00d4ff" : "#333" }}>
+                            {buffer > 0 ? `+${buffer}'` : "0'"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div style={{ display:"flex", gap:14, marginTop:6, fontSize:9, fontFamily:"'JetBrains Mono',monospace", color:"#444" }}>
+                      <span><span style={{ display:"inline-block", width:10, height:10, background:"#4a9eff55", borderRadius:2, marginRight:4 }}/>P50</span>
+                      <span><span style={{ display:"inline-block", width:10, height:10, background:"#00d4ff55", borderRadius:2, marginRight:4, borderLeft:"1px solid #00d4ff" }}/>Γ buffer</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            <div style={{ background:"#0d0d1a", borderRadius:8, padding:"14px 16px", border:"1px solid #00d4ff33", marginTop:8 }}>
+              {/* Header RH */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:6 }}>
+                <div>
+                  <span style={{ fontSize:11, color:"#00d4ff", fontWeight:700 }}>Rolling Horizon Optimizer</span>
+                  <span style={{ fontSize:10, color:"#555", marginLeft:8, fontFamily:"'JetBrains Mono',monospace" }}>
+                    {lang==="pl" ? "okno look-ahead" : "look-ahead window"}
+                  </span>
                 </div>
+                <span style={{ fontSize:18, fontWeight:700, color:"#00d4ff", fontFamily:"'JetBrains Mono',monospace" }}>{planningWindow}d</span>
+              </div>
+              {/* Opis */}
+              <div style={{ fontSize:10, color:"#555", fontFamily:"'JetBrains Mono',monospace", marginBottom:10,
+                background:"#060610", borderRadius:6, padding:"6px 10px", lineHeight:1.8 }}>
+                {lang==="pl"
+                  ? <><span style={{ color:"#00d4ff88" }}>idea</span>{"  "} zamiast sztywnego planu — patrz w przyszłość<br/>
+                     <span style={{ color:"#00d4ff88" }}>krok</span>{"  "} po każdym dniu: czy zostało wolne miejsce?<br/>
+                     <span style={{ color:"#00d4ff88" }}>akcja</span>{" "} pożycz najkrótszą op z kolejnych {planningWindow} dni ⏩</>
+                  : <><span style={{ color:"#00d4ff88" }}>idea</span>{"  "} instead of a fixed plan — look ahead<br/>
+                     <span style={{ color:"#00d4ff88" }}>step</span>{"  "} after each day: is there free capacity left?<br/>
+                     <span style={{ color:"#00d4ff88" }}>action</span>{" "} borrow shortest op from next {planningWindow} days ⏩</>
+                }
+              </div>
+              {/* Suwak */}
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                <span style={{ fontSize:10, color:"#555", whiteSpace:"nowrap" }}>
+                  {lang==="pl" ? "okno =" : "window ="}
+                </span>
                 <input type="range" min={1} max={7} step={1} value={planningWindow}
                   onChange={e => setPlanningWindow(parseInt(e.target.value))}
-                  style={{ width:"100%", accentColor:"#00d4ff", cursor:"pointer" }} />
-                <div style={{ fontSize:10, color:"#555", marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>
-                  {lang==="pl" ? `RH pożycza ops z max ${planningWindow} dni do przodu` : `RH borrows ops up to ${planningWindow} days ahead`}
-                </div>
+                  style={{ flex:1, accentColor:"#00d4ff", cursor:"pointer" }} />
+                <span style={{ fontSize:10, color:"#555", whiteSpace:"nowrap", fontFamily:"'JetBrains Mono',monospace" }}>
+                  {lang==="pl" ? `${planningWindow} dni do przodu` : `${planningWindow} days ahead`}
+                </span>
+              </div>
+              {/* Mini wizualizacja okna */}
+              <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+                {Array.from({ length: Math.min(numDays, 7) }, (_, i) => {
+                  const isToday = i === 0;
+                  const inWindow = i > 0 && i <= planningWindow;
+                  return (
+                    <div key={i} style={{
+                      flex:1, height:28, borderRadius:4, display:"flex", alignItems:"center",
+                      justifyContent:"center", fontSize:9, fontFamily:"'JetBrains Mono',monospace",
+                      fontWeight:700,
+                      background: isToday ? "#00d4ff22" : inWindow ? "#00d4ff11" : "#111118",
+                      border: isToday ? "1px solid #00d4ff" : inWindow ? "1px dashed #00d4ff55" : "1px solid #1e1e2a",
+                      color: isToday ? "#00d4ff" : inWindow ? "#00d4ff88" : "#333",
+                    }}>
+                      {isToday ? (lang==="pl" ? "dziś" : "today") : inWindow ? `+${i}` : `+${i}`}
+                    </div>
+                  );
+                })}
+                {numDays > 7 && <span style={{ fontSize:9, color:"#333" }}>…</span>}
+              </div>
+              <div style={{ display:"flex", gap:12, marginTop:6, fontSize:9, fontFamily:"'JetBrains Mono',monospace", color:"#444" }}>
+                <span><span style={{ display:"inline-block", width:10, height:10, background:"#00d4ff22", border:"1px solid #00d4ff", borderRadius:2, marginRight:4 }}/>
+                  {lang==="pl" ? "dzień bieżący" : "current day"}</span>
+                <span><span style={{ display:"inline-block", width:10, height:10, background:"#00d4ff11", border:"1px dashed #00d4ff55", borderRadius:2, marginRight:4 }}/>
+                  {lang==="pl" ? "zasięg pożyczania" : "borrow range"}</span>
               </div>
             </div>
           </div>
@@ -2702,21 +2819,24 @@ export default function ORSimV5() {
 
         const kpiData = STRATS.map(s => ({ ...s, kpi: calcKPI(s.days, s.key === "rh" ? optDays : numDays, kpiOpts) }));
 
+        const mcRuns = mcResults ? Object.values(mcResults)[0]?.endTimes?.length ?? 1 : 1;
+
         const kpiRows = [
-          { label:lang==="pl"?"Przebiegów":"Runs",           fmt: ()=>"1" },
-          { label:lang==="pl"?"Dni planu":"Plan days",        fmt: k=>`${k?.days ?? "—"}`,                                better:"less", highlight:true },
-          { label:lang==="pl"?"Koniec dnia":"End of day",     fmt: k=> k ? `${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}` : "—" },
-          { label:"OTCR%",                                    fmt: k=>`${k?.otcr ?? "—"}%`,                               better:"more" },
-          { label:"Carry-over",                               fmt: k=>`${k?.carryOver ?? "—"}`,                           better:"less" },
-          { label:lang==="pl"?"Efektywność":"Efficiency",     fmt: k=>`${k?.eff ?? "—"}%`,                                better:"more" },
-          { label:lang==="pl"?"Wykorzystanie":"Utilization",  fmt: k=>`${k?.util ?? "—"}%`,                               better:"more" },
-          { label:lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)",fmt: k=>`${k?.totalOTMin ?? "—"}'`,                         better:"less" },
-          { label:lang==="pl"?"⏩ % przysp.":"⏩ % accel.",   fmt: (k,key)=> k ? (key==="rh"?`${k.pctAccelerated}%`:"0%") : "—", better:"more" },
-          { label:lang==="pl"?"1. Przychód (zł)":"1. Revenue (zł)",    fmt: k=>`${k?.revenueTotal?.toLocaleString() ?? "—"}`,    better:"more" },
-          { label:lang==="pl"?"2. -Koszt OT (zł)":"2. -OT cost (zł)", fmt: k=>`-${k?.otCostTotal?.toLocaleString() ?? "—"}`,    better:"less" },
-          { label:lang==="pl"?"3. Oszczędność sali":"3. OR savings",   fmt: (k,key)=> k && key==="rh" && saved>0 ? `+${k.saleSavingTotal.toLocaleString()}` : "—", better:"more" },
-          { label:lang==="pl"?"4. Wynik łącznie":"4. Total result",    fmt: k=>`${k?.totalResult?.toLocaleString() ?? "—"} zł`,  better:"more", highlight2:true },
-          { label:lang==="pl"?`5. Wynik/dzień (÷dni)`:`5. Result/day (÷days)`, fmt: k=>`${k?.financial?.toLocaleString() ?? "—"} zł`, better:"more" },
+          { key:"runs",  label: lang==="pl"?"Przebiegów":"Runs",            fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mcRuns}` : "1", isMC: true },
+          { key:"days",  label: lang==="pl"?"Dni planu":"Plan days",         fmt: k => `${k?.days ?? "—"}`,                                  better:"less", highlight:true },
+          { key:"end",   label: lang==="pl"?"Koniec dnia":"End of day",      fmt: k => k ? `${minToTime(k.lastEnd)}${k.overtime?" ⚠":" ✓"}` : "—" },
+          { key:"otcr",  label: "OTCR%",                                       fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.otcr ?? k?.otcr ?? "—"}%` : `${k?.otcr ?? "—"}%`, better:"more" },
+          { key:"co",    label: "Carry-over",                                  fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgCarryOver?.toFixed(1) ?? k?.carryOver ?? "—"}` : `${k?.carryOver ?? "—"}`, better:"less" },
+          { key:"eff",   label: lang==="pl"?"Efektywność":"Efficiency",      fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgEfficiency ?? k?.eff ?? "—"}%` : `${k?.eff ?? "—"}%`, better:"more" },
+          { key:"util",  label: lang==="pl"?"Wykorzystanie":"Utilization",   fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgUtilization ?? k?.util ?? "—"}%` : `${k?.util ?? "—"}%`, better:"more" },
+          { key:"ot",    label: lang==="pl"?"Nadgodz. (min/d)":"OT (min/d)", fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgOvertimeMin ?? k?.totalOTMin ?? "—"}'` : `${k?.totalOTMin ?? "—"}'`, better:"less" },
+          { key:"accel", label: "⏩ % "+(lang==="pl"?"przyspieszonych":"accelerated"), fmt: (k, mc, mkey) => mkey === "rh" ? `${k?.pctAccelerated ?? 0}%` : "0%", better:"more" },
+          { key:"dtf",   label: lang==="pl"?"Dni do końca":"Days to finish",  fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${mc[mkey]?.avgDaysToFinish ?? k?.days ?? "—"}` : `${k?.days ?? "—"}`, better:"less" },
+          { key:"fin",   label: lang==="pl"?"Wynik/dzień (zł)":"Result/day", fmt: (k, mc, mkey) => mc && mkey !== "rh" ? `${(mc[mkey]?.avgFinancial ?? k?.financial ?? 0).toLocaleString()} zł` : `${(k?.financial ?? 0).toLocaleString()} zł`, better:"more" },
+          { key:"rev",   label: lang==="pl"?"Przychód łącznie":"Revenue total",fmt: (k) => `${k?.revenueTotal?.toLocaleString() ?? "—"} zł`, better:"more" },
+          { key:"otc",   label: lang==="pl"?"-Koszt OT":"-OT cost",          fmt: (k) => `-${k?.otCostTotal?.toLocaleString() ?? "—"} zł`, better:"less" },
+          { key:"sav",   label: lang==="pl"?"Oszczędność sali":"OR savings", fmt: (k, mc, mkey) => mkey==="rh" && saved>0 ? `+${k?.saleSavingTotal?.toLocaleString() ?? 0} zł` : "—", better:"more" },
+          { key:"tot",   label: lang==="pl"?"Wynik łącznie":"Total result",  fmt: (k) => `${k?.totalResult?.toLocaleString() ?? "—"} zł`, better:"more", highlight2:true },
         ];
 
         return (
@@ -2732,6 +2852,12 @@ export default function ORSimV5() {
                   {" · "}Γ={robustLevel.toFixed(1)} · okno={planningWindow}d
                 </span>
               </div>
+              {mcResults && (
+                <div style={{ fontSize:10, color:"#a78bfa", fontFamily:"'JetBrains Mono',monospace", marginBottom:12 }}>
+                  ✓ {lang==="pl" ? `MC załadowany — ${mcRuns} iteracji` : `MC loaded — ${mcRuns} iterations`}
+                  {" · "}{lang==="pl" ? "Rolling Horizon = 1 przebieg" : "Rolling Horizon = 1 run"}
+                </div>
+              )}
               <div style={{ overflowX:"auto" }}>
                 <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
                   <thead><tr>
@@ -2740,11 +2866,11 @@ export default function ORSimV5() {
                   </tr></thead>
                   <tbody>
                     {kpiRows.map(row => {
-                      const vals = kpiData.map(s => s.kpi ? row.fmt(s.kpi, s.key) : "—");
+                      const vals = kpiData.map(s => row.fmt(s.kpi, mcResults, s.key));
                       const nums = vals.map(v => parseFloat(v)).filter(n => !isNaN(n));
                       const best = row.better === "more" ? Math.max(...nums) : row.better === "less" ? Math.min(...nums) : null;
                       return (
-                        <tr key={row.label}>
+                        <tr key={row.label} style={{ background: row.isMC ? "#a78bfa08" : "transparent" }}>
                           <td style={{ color:"#666", fontSize:11 }}>{row.label}</td>
                           {kpiData.map((s, i) => {
                             const num = parseFloat(vals[i]);
@@ -2807,6 +2933,65 @@ export default function ORSimV5() {
                 }
               </div>
             </div>
+
+            {(() => {
+              const detailTable = (d, color, label) => {
+                if (!d) return null;
+                const allRows = d.flatMap(x => x.rows);
+                const carryOverIds = new Set(allRows.filter(r => r.isCarryOver).map(r => r.planId));
+                return (
+                  <div className="card" style={{ borderTop:`2px solid ${color}` }}>
+                    <div style={{ fontSize:10, letterSpacing:"0.1em", color, textTransform:"uppercase",
+                      marginBottom:10, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>
+                      {label}
+                    </div>
+                    <div style={{ overflowX:"auto" }}>
+                      <table style={{ width:"100%", borderCollapse:"collapse", fontSize:11 }}>
+                        <thead><tr>
+                          {["Op","#","Chir","Procedura","Plan","Rzecz.","Δ","Start plan","Koniec plan","Start real","Koniec real","CO"].map(h =>
+                            <th key={h}>{h}</th>
+                          )}
+                        </tr></thead>
+                        <tbody>
+                          {allRows.map((r, i) => {
+                            const co = carryOverIds.has(r.planId);
+                            return (
+                              <tr key={i} style={{ background: r.isCarryOver ? "#ff224410" : "transparent" }}>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: co?"#ff2244":"#aaa", fontWeight: co?700:400 }}>D{r.dayIdx+1}-{r.id}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color: co?"#ff2244":"#555", fontWeight: co?700:400 }}>#{r.planId??'—'}</td>
+                                <td><span style={{ color: r.isCarryOver?"#ff2244":SURGEON_COLORS[r.chir], fontWeight:600 }}>{r.chir}</span></td>
+                                <td style={{ color:"#666" }}>{r.isSor ? "🚨 SOR" : r.proc}{r.isCarryOver?" ↩":""}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color }}>{r.planned}'</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace" }}>{r.actual}'</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:600,
+                                  color:r.delay>0?"#ff6b6b":r.delay<0?"#6bcb77":"#888" }}>{r.delay>0?"+":""}{r.delay}'</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:`${color}99` }}>{minToTime(r.startPlan)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:`${color}99` }}>{minToTime(r.endPlan)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:"#666" }}>{minToTime(r.startReal)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", color:r.endReal>END?"#ff6b6b":"#666" }}>{minToTime(r.endReal)}</td>
+                                <td style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, textAlign:"center" }}>
+                                  {r.isCarryOver
+                                    ? <span style={{ color:"#ff2244", fontWeight:700 }}>↩D{r.dayIdx}</span>
+                                    : co
+                                    ? <span style={{ color:"#ff9f43" }}>→D{r.dayIdx+2}</span>
+                                    : <span style={{ color:"#333" }}>—</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              };
+              return (
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  {detailTable(days, planColor, `${MODE_CONFIG[planMode].label} — ${lang==="pl"?"szczegóły":"details"}`)}
+                  {detailTable(active.days, active.color, `${active.label} — ${lang==="pl"?"szczegóły":"details"}`)}
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
