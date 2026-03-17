@@ -887,6 +887,13 @@ function GanttRow({ row, width, planColor }) {
         borderRadius:3, opacity: row.isCarryOver ? 1 : 0.9,
         ...(row.delay > 10 && !isSor ? { outline:"2px solid #ff4d4d", outlineOffset:1 } : {}),
       }} />
+      <div style={{ marginTop:32, paddingTop:14, borderTop:"1px solid #111118",
+        display:"flex", justifyContent:"space-between", alignItems:"center",
+        fontSize:10, color:"#333", fontFamily:"'JetBrains Mono',monospace" }}>
+        <span>© 2025 <span style={{ color:"#e07b39" }}>Stanisław Szulc</span> · OR Simulator v1.0</span>
+        <a href="https://github.com/stanszulc/operating-room-simulator" target="_blank"
+          style={{ color:"#333", textDecoration:"none" }}>github.com/stanszulc ↗</a>
+      </div>
     </div>
   );
 }
@@ -1574,7 +1581,10 @@ export default function ORSimV5() {
           <div onClick={e => e.stopPropagation()} style={{ background:"#111118", border:"1px solid #1e1e2a", borderRadius:12, padding:"28px 32px", maxWidth:580, width:"100%", maxHeight:"80vh", overflowY:"auto", position:"relative" }}>
             <button onClick={() => setShowHelp(false)} style={{ position:"absolute", top:16, right:16, background:"transparent", border:"none", color:"#555", fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
             <div style={{ fontSize:10, letterSpacing:"0.15em", color:"#444", textTransform:"uppercase", fontFamily:"'JetBrains Mono',monospace", marginBottom:8 }}>{t.helpModal.label}</div>
-            <h2 style={{ margin:"0 0 14px", fontSize:18, color:"#f0ede8" }}>{t.helpModal.title}</h2>
+            <h2 style={{ margin:"0 0 6px", fontSize:18, color:"#f0ede8" }}>{t.helpModal.title}</h2>
+            <div style={{ fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", marginBottom:14 }}>
+              by <span style={{ color:"#e07b39" }}>Stanisław Szulc</span> · <a href="https://github.com/stanszulc/operating-room-simulator" target="_blank" style={{ color:"#555", textDecoration:"none" }}>github.com/stanszulc</a>
+            </div>
             <div style={{ fontSize:12, color:"#888", lineHeight:1.8, marginBottom:20,
               padding:"12px 16px", background:"#0d0d14", borderRadius:8,
               borderLeft:"3px solid #e07b39" }}>
