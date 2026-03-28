@@ -2057,7 +2057,7 @@ export default function ORSimV5() {
                 <div style={{ fontSize:13, fontWeight:600, color, marginBottom:4 }}>{proc}</div>
                 <div style={{ fontSize:10, color:"#444", fontFamily:"'JetBrains Mono',monospace", marginBottom:14 }}>P50 ≈ {previewMedian}' · śr ≈ {meanVal}' · P80 ≈ {previewP80}'</div>
                 <Slider label="μ (log-scale mean)" value={mu} min={3.5} max={5.0} step={0.01} onChange={v => setParam(proc,"mu",v)} color={color} />
-                <Slider label="σ (log-scale std)"  value={sigma} min={0.10} max={0.60} step={0.01} onChange={v => setParam(proc,"sigma",v)} color={color} />
+                <Slider label="σ (log-scale std)"  value={sigma} min={0.00} max={0.60} step={0.01} onChange={v => setParam(proc,"sigma",v)} color={color} />
                 <div style={{ marginTop:14 }}>
                   <div style={{ fontSize:10, color:"#333", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6, fontFamily:"'JetBrains Mono',monospace" }}>{t.params.distLabel}</div>
                   <ResponsiveContainer width="100%" height={110}>
@@ -2151,7 +2151,7 @@ export default function ORSimV5() {
                 </div>
                 <div style={{ display:"flex", alignItems:"center", gap:10, flex:1, minWidth:200 }}>
                   <span style={{ fontSize:11, color:"#888", whiteSpace:"nowrap" }}>{t.monte.iterLabel}:</span>
-                  <input type="range" min={100} max={1000} step={100} value={mcIterations}
+                  <input type="range" min={1} max={1000} step={1} value={mcIterations}
                     onChange={e => setMcIterations(parseInt(e.target.value))}
                     style={{ flex:1, accentColor:"#a78bfa", cursor:"pointer" }} />
                   <span style={{ fontSize:13, fontWeight:700, color:"#a78bfa",
